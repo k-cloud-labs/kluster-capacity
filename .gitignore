@@ -12,4 +12,13 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
+
+# binary file
+kcluster-capacity
+
+# conf
+pod.yaml
+schedulerconfig
+kubeconfig
+
