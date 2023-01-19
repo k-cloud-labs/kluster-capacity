@@ -1,0 +1,64 @@
+name: build
+
+on:
+  # Run this workflow every time a new commit pushed to upstream/fork repository.
+  # Run workflow on fork repository will help contributors find and resolve issues before sending a PR.
+  push:
+  pull_request:
+jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+      - name: install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.19.x
+      - name: lint
+        run: hack/verify-staticcheck.sh
+      - name: import alias
+        run: hack/verify-import-aliases.sh
+  fmt:
+    name: gofmt
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+      - name: install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.19.x
+      - name: go fmt check
+        run: make fmt-check
+  vet:
+    name: go vet
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+      - name: install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.19.x
+      - name: go vet
+        run: make vet
+#  test:
+#    name: unit test
+#    needs:
+#      - fmt
+#      - vet
+#    runs-on: ubuntu-18.04
+#    steps:
+#      - name: checkout code
+#        uses: actions/checkout@v2
+#      - name: install Go
+#        uses: actions/setup-go@v2
+#        with:
+#          go-version: 1.19.x
+#      - name: Run coverage
+#        run: ./script/test.sh
+#      - name: Codecov
+#        uses: codecov/codecov-action@v3.1.0
+
