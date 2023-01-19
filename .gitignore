@@ -15,7 +15,7 @@
 vendor/
 
 # binary file
-kcluster-capacity
+kluster-capacity
 
 # conf
 pod.yaml
