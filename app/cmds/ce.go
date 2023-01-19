@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
@@ -72,8 +73,21 @@ func NewCapacityEstimationCmd() *cobra.Command {
 }
 
 func validate(opt *options.CapacityEstimationOptions) error {
-	if len(opt.PodTemplate) == 0 {
-		return errors.New("pod template file is missing")
+	if len(opt.PodTemplate) == 0 && len(opt.PodFromCluster) == 0 {
+		return errors.New("pod template file and pod from cluster both is missing")
+	}
+
+	if len(opt.PodTemplate) != 0 && len(opt.PodFromCluster) != 0 {
+		return errors.New("pod template file and pod from cluster is exclusive")
+	}
+
+	if len(opt.PodFromCluster) > 0 {
+		strs := strings.Split(opt.PodFromCluster, "/")
+		if len(strs) != 2 {
+			return errors.New("format of pod from cluster is incorrect")
+		}
+		opt.Namespace = strs[0]
+		opt.Name = strs[1]
 	}
 
 	_, present := os.LookupEnv("KC_INCLUSTER")
@@ -99,16 +113,16 @@ func run(opt *options.CapacityEstimationOptions) error {
 		return err
 	}
 
-	err = conf.ParseAPISpec()
-	if err != nil {
-		return fmt.Errorf("failed to parse pod spec file: %v ", err)
-	}
-
 	conf.KubeClient, err = clientset.NewForConfig(cfg)
 	if err != nil {
 		return err
 	}
 	conf.RestConfig = cfg
+
+	err = conf.ParseAPISpec()
+	if err != nil {
+		return fmt.Errorf("failed to parse pod spec file: %v ", err)
+	}
 
 	report, err := runSimulator(conf, cc)
 	if err != nil {

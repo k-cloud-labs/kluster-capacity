@@ -65,8 +65,8 @@ checkall: fmt-check vet ## Do all check
 	hack/verify-staticcheck.sh
 	hack/verify-import-aliases.sh
 
-.PHONY: kluster-capacity
-kluster-capacity: $(SOURCES) ## Build kluster-capacity webhook binary file
+.PHONY: build
+build: $(SOURCES) ## Build kluster-capacity webhook binary file
 	@CGO_ENABLED=0 GOOS=$(GOOS) go build \
 		-ldflags $(LDFLAGS) \
 		-o kluster-capacity \

@@ -9,7 +9,7 @@ cd "${SCRIPT_ROOT}"
 ROOT_PATH=$(pwd)
 
 IMPORT_ALIASES_PATH="${ROOT_PATH}/hack/.import-aliases"
-INCLUDE_PATH="(${ROOT_PATH}/cmd|${ROOT_PATH}/pkg)"
+INCLUDE_PATH="(${ROOT_PATH}/app|${ROOT_PATH}/pkg)"
 
 ret=0
 # We can't directly install preferredimports by `go install` due to the go.mod issue:
