@@ -28,7 +28,7 @@ Build the framework:
 $ cd $GOPATH/src/github.com/k-cloud-labs/
 $ git clone https://github.com/k-cloud-labs/kluster-capacity
 $ cd kluster-capacity
-$ make kluster-capacity
+$ make build
 ```
 and run the analysis:
 
