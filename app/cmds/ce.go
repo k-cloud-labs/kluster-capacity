@@ -45,7 +45,7 @@ func NewCapacityEstimationCmd() *cobra.Command {
 	opt := options.NewCapacityEstimationOptions()
 
 	var cmd = &cobra.Command{
-		Use:           "ce --kubeconfig KUBECONFIG --pod-template PODYAML",
+		Use:           "ce --kubeconfig KUBECONFIG --pod-template PODYAML or ce --kubeconfig KUBECONFIG --pod-from-cluster Namespace/Name",
 		Short:         "ce is used for simulating scheduling of one or multiple pods",
 		Long:          capacityEstimationLong,
 		SilenceErrors: false,

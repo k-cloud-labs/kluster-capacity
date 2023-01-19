@@ -33,7 +33,10 @@ $ make build
 and run the analysis:
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template>
+# use an specified pod yaml file as pod template
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> 
+# use an existing pod from cluster as pod template
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-from-cluster <namespace/name key of the pod> 
 ```
 For more information about available options run:
 
@@ -71,7 +74,7 @@ Once the number of running pods in the cluster grows and the analysis is run aga
 the number of schedulable pods decreases as well:
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pods-template <path to pod template> --verbose
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -95,8 +98,8 @@ Pod distribution among nodes:
 `ce` command has a flag `--output (-o)` to format its output as json or yaml.
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pods-template <path to pod template> -o json
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pods-template <path to pod template> -o yaml
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> -o json
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> -o yaml
 ```
 
 The json or yaml output is not versioned and is not guaranteed to be stable across various releases.
