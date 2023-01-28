@@ -1,6 +1,8 @@
 package framework
 
 import (
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -12,8 +14,18 @@ const (
 
 type Simulator interface {
 	Run() error
-	SyncWithClient(p clientset.Interface) error
-	//SyncWithInformerFactory(factory informers.SharedInformerFactory) error
+	InitializeWithClient(client clientset.Interface) error
+	InitializeWithInformerFactory(factory informers.SharedInformerFactory) error
+	CreatePod(pod *corev1.Pod) error
+	UpdateStatus(pod *corev1.Pod)
+	Status() Status
+	Stop(reason string)
+}
+
+type SimulatorExecutor interface {
+	Run() error
+	InitializeWithClient(client clientset.Interface) error
+	InitializeWithInformerFactory(factory informers.SharedInformerFactory) error
 	Report() Printer
 }
 

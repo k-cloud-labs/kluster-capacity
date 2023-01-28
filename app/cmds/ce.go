@@ -137,12 +137,12 @@ func run(opt *options.CapacityEstimationOptions) error {
 }
 
 func runSimulator(conf *options.CapacityEstimationConfig, kubeSchedulerConfig *schedconfig.CompletedConfig) (framework.Printer, error) {
-	s, err := ce.NewCESimulator(kubeSchedulerConfig, conf.RestConfig, conf.Pod, conf.Options.MaxLimit, conf.Options.ExcludeNodes)
+	s, err := ce.NewCESimulatorExecutor(kubeSchedulerConfig, conf.RestConfig, conf.Pod, conf.Options.MaxLimit, conf.Options.ExcludeNodes)
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.SyncWithClient(conf.KubeClient)
+	err = s.InitializeWithClient(conf.KubeClient)
 	if err != nil {
 		return nil, err
 	}
