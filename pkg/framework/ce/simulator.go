@@ -6,7 +6,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
@@ -87,8 +86,8 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 	return s, nil
 }
 
-func (s *simulator) InitializeWithClient(client clientset.Interface) error {
-	err := s.Simulator.InitializeWithClient(client)
+func (s *simulator) InitializeWithClient() error {
+	err := s.Simulator.InitializeWithClient()
 	if err != nil {
 		return err
 	}

@@ -142,7 +142,7 @@ func runSimulator(conf *options.CapacityEstimationConfig, kubeSchedulerConfig *s
 		return nil, err
 	}
 
-	err = s.InitializeWithClient(conf.KubeClient)
+	err = s.InitializeWithClient()
 	if err != nil {
 		return nil, err
 	}

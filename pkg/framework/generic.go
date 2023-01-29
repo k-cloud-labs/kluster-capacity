@@ -8,18 +8,20 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	errors2 "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	externalclientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
@@ -33,9 +35,11 @@ type Status struct {
 }
 
 type genericSimulator struct {
-	externalKubeClient externalclientset.Interface
-	informerFactory    informers.SharedInformerFactory
-	dynInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	fakeClient          clientset.Interface
+	client              clientset.Interface
+	fakeInformerFactory informers.SharedInformerFactory
+	informerFactory     informers.SharedInformerFactory
+	dynInformerFactory  dynamicinformer.DynamicSharedInformerFactory
 
 	// scheduler
 	scheduler           *scheduler.Scheduler
@@ -85,7 +89,7 @@ func WithCustomEventHandlers(handlers []func()) Option {
 
 // NewGenericSimulator create a generic simulator for ce, cc, ss simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
-func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, kubeConfig *restclient.Config, options ...Option) (Simulator, error) {
+func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (Simulator, error) {
 	kubeSchedulerConfig.InformerFactory.InformerFor(&corev1.Pod{}, newPodInformer)
 
 	// create internal namespace for simulated pod
@@ -102,20 +106,24 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, kubeC
 		return nil, err
 	}
 
+	client := clientset.NewForConfigOrDie(restConfig)
+	informerFactory := informers.NewSharedInformerFactory(client, 0)
 	s := &genericSimulator{
-		externalKubeClient: kubeSchedulerConfig.Client,
-		stopCh:             make(chan struct{}),
-		informerFactory:    kubeSchedulerConfig.InformerFactory,
-		informerCh:         make(chan struct{}),
-		schedulerCh:        make(chan struct{}),
+		fakeClient:          kubeSchedulerConfig.Client,
+		client:              client,
+		stopCh:              make(chan struct{}),
+		fakeInformerFactory: kubeSchedulerConfig.InformerFactory,
+		informerFactory:     informerFactory,
+		informerCh:          make(chan struct{}),
+		schedulerCh:         make(chan struct{}),
 	}
 	for _, option := range options {
 		option(s)
 	}
 
 	// only for latest k8s version
-	if kubeConfig != nil {
-		dynClient := dynamic.NewForConfigOrDie(kubeConfig)
+	if restConfig != nil {
+		dynClient := dynamic.NewForConfigOrDie(restConfig)
 		s.dynInformerFactory = dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynClient, 0, corev1.NamespaceAll, nil)
 	}
 
@@ -126,7 +134,7 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, kubeC
 
 	s.scheduler = scheduler
 
-	s.informerFactory.Start(s.informerCh)
+	s.fakeInformerFactory.Start(s.informerCh)
 	if s.dynInformerFactory != nil {
 		s.dynInformerFactory.Start(s.informerCh)
 	}
@@ -158,7 +166,7 @@ func (s *genericSimulator) Stop(reason string) {
 }
 
 func (s *genericSimulator) CreatePod(pod *corev1.Pod) error {
-	_, err := s.externalKubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	_, err := s.fakeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	return err
 }
 
@@ -166,7 +174,7 @@ func (s *genericSimulator) Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// wait for all informer cache synced
-	s.informerFactory.WaitForCacheSync(s.informerCh)
+	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
 	if s.dynInformerFactory != nil {
 		s.dynInformerFactory.WaitForCacheSync(s.informerCh)
 	}
@@ -178,22 +186,22 @@ func (s *genericSimulator) Run() error {
 	return nil
 }
 
-func (s *genericSimulator) InitializeWithClient(client clientset.Interface) error {
+func (s *genericSimulator) InitializeWithClient() error {
 	listOptions := metav1.ListOptions{ResourceVersion: "0"}
 	createOptions := metav1.CreateOptions{}
 
-	nsItems, err := client.CoreV1().Namespaces().List(context.TODO(), listOptions)
+	nsItems, err := s.client.CoreV1().Namespaces().List(context.TODO(), listOptions)
 	if err != nil {
 		return fmt.Errorf("unable to list ns: %v", err)
 	}
 
 	for _, item := range nsItems.Items {
-		if _, err := s.externalKubeClient.CoreV1().Namespaces().Create(context.TODO(), &item, createOptions); err != nil {
+		if _, err := s.fakeClient.CoreV1().Namespaces().Create(context.TODO(), &item, createOptions); err != nil {
 			return fmt.Errorf("unable to copy ns: %v", err)
 		}
 	}
 
-	podItems, err := client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), listOptions)
+	podItems, err := s.client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), listOptions)
 	if err != nil {
 		return fmt.Errorf("unable to list pods: %v", err)
 	}
@@ -202,13 +210,13 @@ func (s *genericSimulator) InitializeWithClient(client clientset.Interface) erro
 		// selector := fmt.Sprintf("status.phase!=%v,status.phase!=%v", v1.PodSucceeded, v1.PodFailed)
 		// field selector are not supported by fake clientset/informers
 		if item.Status.Phase != corev1.PodSucceeded && item.Status.Phase != corev1.PodFailed {
-			if _, err := s.externalKubeClient.CoreV1().Pods(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
+			if _, err := s.fakeClient.CoreV1().Pods(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
 				return fmt.Errorf("unable to copy pod: %v", err)
 			}
 		}
 	}
 
-	nodeItems, err := client.CoreV1().Nodes().List(context.TODO(), listOptions)
+	nodeItems, err := s.client.CoreV1().Nodes().List(context.TODO(), listOptions)
 	if err != nil {
 		return fmt.Errorf("unable to list nodes: %v", err)
 	}
@@ -217,48 +225,116 @@ func (s *genericSimulator) InitializeWithClient(client clientset.Interface) erro
 		if s.excludeNodes.Has(item.Name) {
 			continue
 		}
-		if _, err := s.externalKubeClient.CoreV1().Nodes().Create(context.TODO(), &item, createOptions); err != nil {
+		if _, err := s.fakeClient.CoreV1().Nodes().Create(context.TODO(), &item, createOptions); err != nil {
 			return fmt.Errorf("unable to copy node: %v", err)
 		}
 	}
 
-	pvcItems, err := client.CoreV1().PersistentVolumeClaims(metav1.NamespaceAll).List(context.TODO(), listOptions)
+	serviceItems, err := s.client.CoreV1().Services(metav1.NamespaceAll).List(context.TODO(), listOptions)
+	if err != nil {
+		return fmt.Errorf("unable to list services: %v", err)
+	}
+
+	for _, item := range serviceItems.Items {
+		if _, err := s.fakeClient.CoreV1().Services(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
+			return fmt.Errorf("unable to copy service: %v", err)
+		}
+	}
+
+	pvcItems, err := s.client.CoreV1().PersistentVolumeClaims(metav1.NamespaceAll).List(context.TODO(), listOptions)
 	if err != nil {
 		return fmt.Errorf("unable to list pvcs: %v", err)
 	}
 
 	for _, item := range pvcItems.Items {
-		if _, err := s.externalKubeClient.CoreV1().PersistentVolumeClaims(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
+		if _, err := s.fakeClient.CoreV1().PersistentVolumeClaims(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
 			return fmt.Errorf("unable to copy pvc: %v", err)
 		}
 	}
 
-	pvItems, err := client.CoreV1().PersistentVolumes().List(context.TODO(), listOptions)
+	pvItems, err := s.client.CoreV1().PersistentVolumes().List(context.TODO(), listOptions)
 	if err != nil {
-		return fmt.Errorf("unable to list pvcs: %v", err)
+		return fmt.Errorf("unable to list pvs: %v", err)
 	}
 
 	for _, item := range pvItems.Items {
-		if _, err := s.externalKubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), &item, createOptions); err != nil {
+		if _, err := s.fakeClient.CoreV1().PersistentVolumes().Create(context.TODO(), &item, createOptions); err != nil {
 			return fmt.Errorf("unable to copy pv: %v", err)
 		}
 	}
 
-	storageClassesItems, err := client.StorageV1().StorageClasses().List(context.TODO(), listOptions)
+	storageClassesItems, err := s.client.StorageV1().StorageClasses().List(context.TODO(), listOptions)
 	if err != nil {
 		return fmt.Errorf("unable to list storage classes: %v", err)
 	}
 
 	for _, item := range storageClassesItems.Items {
-		if _, err := s.externalKubeClient.StorageV1().StorageClasses().Create(context.TODO(), &item, createOptions); err != nil {
+		if _, err := s.fakeClient.StorageV1().StorageClasses().Create(context.TODO(), &item, createOptions); err != nil {
 			return fmt.Errorf("unable to copy storage class: %v", err)
+		}
+	}
+
+	csiNodeItems, err := s.client.StorageV1().CSINodes().List(context.TODO(), listOptions)
+	if err != nil && !errors2.IsNotFound(err) {
+		return fmt.Errorf("unable to list csi nodes: %v", err)
+	}
+
+	for _, item := range csiNodeItems.Items {
+		if _, err := s.fakeClient.StorageV1().CSINodes().Create(context.TODO(), &item, createOptions); err != nil {
+			return fmt.Errorf("unable to copy csi node: %v", err)
+		}
+	}
+
+	csiDriverItems, err := s.client.StorageV1().CSIDrivers().List(context.TODO(), listOptions)
+	if err != nil && !errors2.IsNotFound(err) {
+		return fmt.Errorf("unable to list csi drivers: %v", err)
+	}
+
+	for _, item := range csiDriverItems.Items {
+		if _, err := s.fakeClient.StorageV1().CSIDrivers().Create(context.TODO(), &item, createOptions); err != nil {
+			return fmt.Errorf("unable to copy csi driver: %v", err)
+		}
+	}
+
+	csiStorageCapacityItems, err := s.client.StorageV1().CSIStorageCapacities(metav1.NamespaceAll).List(context.TODO(), listOptions)
+	if err != nil && !errors2.IsNotFound(err) {
+		return fmt.Errorf("unable to list csi storage capacity: %v", err)
+	}
+
+	for _, item := range csiStorageCapacityItems.Items {
+		if _, err := s.fakeClient.StorageV1().CSIStorageCapacities(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
+			return fmt.Errorf("unable to copy csi storage capacity: %v", err)
+		}
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
+		podSchedulingItems, err := s.client.ResourceV1alpha1().PodSchedulings(metav1.NamespaceAll).List(context.TODO(), listOptions)
+		if err != nil {
+			return fmt.Errorf("unable to list pod schedulings: %v", err)
+		}
+
+		for _, item := range podSchedulingItems.Items {
+			if _, err := s.fakeClient.ResourceV1alpha1().PodSchedulings(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
+				return fmt.Errorf("unable to copy pod scheduling: %v", err)
+			}
+		}
+
+		resourceReclaimItems, err := s.client.ResourceV1alpha1().ResourceClaims(metav1.NamespaceAll).List(context.TODO(), listOptions)
+		if err != nil {
+			return fmt.Errorf("unable to list resource reclaims: %v", err)
+		}
+
+		for _, item := range resourceReclaimItems.Items {
+			if _, err := s.fakeClient.ResourceV1alpha1().ResourceClaims(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
+				return fmt.Errorf("unable to copy resource reclaim: %v", err)
+			}
 		}
 	}
 
 	return nil
 }
 
-func (s *genericSimulator) InitializeWithInformerFactory(factory informers.SharedInformerFactory) error {
+func (s *genericSimulator) InitializeWithInformerFactory() error {
 	return errors.New("not implemented yet")
 }
 
@@ -274,8 +350,8 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 
 	// create the scheduler.
 	return scheduler.New(
-		s.externalKubeClient,
-		s.informerFactory,
+		s.fakeClient,
+		s.fakeInformerFactory,
 		s.dynInformerFactory,
 		getRecorderFactory(cc),
 		s.schedulerCh,
@@ -291,7 +367,7 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	)
 }
 
-func newPodInformer(cs externalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+func newPodInformer(cs clientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 	selector := fmt.Sprintf("status.phase!=%v,status.phase!=%v", corev1.PodSucceeded, corev1.PodFailed)
 	tweakListOptions := func(options *metav1.ListOptions) {
 		options.FieldSelector = selector
