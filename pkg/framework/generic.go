@@ -23,9 +23,13 @@ import (
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler"
-	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	"k8s.io/kubernetes/pkg/scheduler/profile"
+
+	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/generic"
 )
 
 // Status capture all scheduled pods with reason why the estimation could not continue
@@ -45,7 +49,9 @@ type genericSimulator struct {
 	scheduler           *scheduler.Scheduler
 	excludeNodes        sets.Set[string]
 	outOfTreeRegistry   runtime.Registry
-	customBind          config.PluginSet
+	customBind          kubeschedulerconfig.PluginSet
+	customPreBind       kubeschedulerconfig.PluginSet
+	customPostBind      kubeschedulerconfig.PluginSet
 	customEventHandlers []func()
 
 	// for scheduler and informer
@@ -75,9 +81,21 @@ func WithOutOfTreeRegistry(registry runtime.Registry) Option {
 	}
 }
 
-func WithCustomBind(plugins config.PluginSet) Option {
+func WithCustomBind(plugins kubeschedulerconfig.PluginSet) Option {
 	return func(s *genericSimulator) {
 		s.customBind = plugins
+	}
+}
+
+func WithCustomPreBind(plugins kubeschedulerconfig.PluginSet) Option {
+	return func(s *genericSimulator) {
+		s.customPreBind = plugins
+	}
+}
+
+func WithCustomPostBind(plugins kubeschedulerconfig.PluginSet) Option {
+	return func(s *genericSimulator) {
+		s.customPostBind = plugins
 	}
 }
 
@@ -344,9 +362,18 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 		handler()
 	}
 
+	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
+	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = []kubeschedulerconfig.Plugin{{Name: volumebinding.Name}}
+	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
+	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = []kubeschedulerconfig.Plugin{{Name: defaultbinder.Name}}
+
 	// custom bind plugin
+	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, s.customPreBind.Enabled...)
+	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled, s.customPreBind.Disabled...)
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled, s.customBind.Enabled...)
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled, s.customBind.Disabled...)
+	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled, s.customPostBind.Enabled...)
+	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled, s.customPostBind.Disabled...)
 
 	// create the scheduler.
 	return scheduler.New(

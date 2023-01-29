@@ -30,7 +30,7 @@ import (
 
 	"github.com/k-cloud-labs/kluster-capacity/app/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/ce"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/capacityestimation"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
@@ -137,7 +137,7 @@ func run(opt *options.CapacityEstimationOptions) error {
 }
 
 func runSimulator(conf *options.CapacityEstimationConfig, kubeSchedulerConfig *schedconfig.CompletedConfig) (framework.Printer, error) {
-	s, err := ce.NewCESimulatorExecutor(kubeSchedulerConfig, conf.RestConfig, conf.Pod, conf.Options.MaxLimit, conf.Options.ExcludeNodes)
+	s, err := capacityestimation.NewCESimulatorExecutor(kubeSchedulerConfig, conf.RestConfig, conf.Pod, conf.Options.MaxLimit, conf.Options.ExcludeNodes)
 	if err != nil {
 		return nil, err
 	}

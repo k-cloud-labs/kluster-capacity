@@ -1,4 +1,4 @@
-package ce
+package capacityestimation
 
 import (
 	"fmt"
@@ -9,13 +9,13 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
-	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
 	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/capacityestimationbinder"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/capacityestimation"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/generic"
 )
 
 // only support one scheduler for now and the scheduler name is "default-scheduler"
@@ -40,15 +40,21 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 
 	genericSimulator, err := pkgframework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
 		pkgframework.WithExcludeNodes(excludeNodes),
+		// add your custom plugins
 		pkgframework.WithOutOfTreeRegistry(frameworkruntime.Registry{
-			capacityestimationbinder.Name: func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
-				return capacityestimationbinder.New(kubeSchedulerConfig.Client, configuration, f, s.postBindHook)
+			generic.Name: func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
+				return generic.New(kubeSchedulerConfig.Client)
+			},
+			capacityestimation.Name: func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
+				return capacityestimation.New(s.postBindHook)
 			},
 		}),
-		pkgframework.WithCustomBind(kubeschedulerconfig.PluginSet{
-			Enabled:  []kubeschedulerconfig.Plugin{{Name: capacityestimationbinder.Name}},
-			Disabled: []kubeschedulerconfig.Plugin{{Name: defaultbinder.Name}},
+		// plugin configs added here is only for simulator logic.
+		// custom plugin configs of real scheduler is in your kubescheduler config file.
+		pkgframework.WithCustomPostBind(config.PluginSet{
+			Enabled: []config.Plugin{{Name: capacityestimation.Name}},
 		}),
+		// add your custom event handlers
 		pkgframework.WithCustomEventHandlers([]func(){
 			func() {
 				_, _ = kubeSchedulerConfig.InformerFactory.Core().V1().Pods().Informer().AddEventHandler(

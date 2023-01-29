@@ -1,4 +1,4 @@
-package ce
+package capacityestimation
 
 import (
 	"fmt"
