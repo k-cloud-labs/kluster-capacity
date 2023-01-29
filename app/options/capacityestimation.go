@@ -10,12 +10,11 @@ import (
 	"strings"
 
 	"github.com/spf13/pflag"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	restclient "k8s.io/client-go/rest"
-
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	clientset "k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	apiv1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
@@ -39,6 +38,7 @@ type CapacityEstimationOptions struct {
 type CapacityEstimationConfig struct {
 	Pod        *corev1.Pod
 	KubeClient clientset.Interface
+	// TODO: try to use fake dynamicInformerFactory
 	RestConfig *restclient.Config
 	Options    *CapacityEstimationOptions
 }

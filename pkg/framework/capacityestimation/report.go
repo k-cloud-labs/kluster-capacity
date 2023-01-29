@@ -1,4 +1,4 @@
-package ce
+package capacityestimation
 
 import (
 	"encoding/json"
@@ -12,6 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
+
+	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 )
 
 type CapacityEstimationReview struct {
@@ -83,7 +85,7 @@ func (r *CapacityEstimationReview) Print(verbose bool, format string) error {
 	}
 }
 
-func generateReport(pods []*corev1.Pod, status Status) *CapacityEstimationReview {
+func generateReport(pods []*corev1.Pod, status pkgframework.Status) *CapacityEstimationReview {
 	return &CapacityEstimationReview{
 		Spec:   getReviewSpec(pods),
 		Status: getReviewStatus(pods, status),
@@ -101,7 +103,7 @@ func getMainStopReason(message string) *CapacityEstimationReviewScheduleStopReas
 	return reason
 }
 
-func parsePodsReview(templatePods []*corev1.Pod, status Status) []*CapacityEstimationReviewResult {
+func parsePodsReview(templatePods []*corev1.Pod, status pkgframework.Status) []*CapacityEstimationReviewResult {
 	templatesCount := len(templatePods)
 	result := make([]*CapacityEstimationReviewResult, 0)
 
@@ -146,7 +148,7 @@ func getReviewSpec(podTemplates []*corev1.Pod) CapacityEstimationReviewSpec {
 	}
 }
 
-func getReviewStatus(pods []*corev1.Pod, status Status) CapacityEstimationReviewStatus {
+func getReviewStatus(pods []*corev1.Pod, status pkgframework.Status) CapacityEstimationReviewStatus {
 	return CapacityEstimationReviewStatus{
 		CreationTimestamp: time.Now(),
 		Replicas:          int32(len(status.Pods)),

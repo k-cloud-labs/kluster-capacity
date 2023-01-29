@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/version/sharedcommand"
 )
 
 var cfgFile string
@@ -60,6 +61,7 @@ func init() {
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
 	rootCmd.AddCommand(cmds.NewCapacityEstimationCmd(), cmds.NewSchedulerSimulationCmd(), cmds.NewClusterCompressionCmd())
+	rootCmd.AddCommand(sharedcommand.NewCmdVersion(os.Stdout, "kluster-capacity"))
 }
 
 // initConfig reads in config file and ENV variables if set.

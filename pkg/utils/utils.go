@@ -5,6 +5,7 @@ import (
 	"os"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -18,16 +19,17 @@ import (
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	kubeschedulerscheme "k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/plugins/capacityestimationbinder"
 )
 
 func init() {
 	if err := corev1.AddToScheme(legacyscheme.Scheme); err != nil {
 		fmt.Printf("err: %v\n", err)
 	}
+	// add your own scheme here to use dynamic informer factory when you have some custom filter plugins
+	// which uses other resources than defined in scheduler.
+	// for details, refer to k8s.io/kubernetes/pkg/scheduler/eventhandlers.go
 }
 
 func BuildRestConfig(config string) (*restclient.Config, error) {
@@ -98,10 +100,6 @@ func buildKubeSchedulerCompletedConfig(kcfg *kubeschedulerconfig.KubeSchedulerCo
 		kcfg.Profiles[0].Plugins = &kubeschedulerconfig.Plugins{}
 	}
 
-	kcfg.Profiles[0].Plugins.Bind = kubeschedulerconfig.PluginSet{
-		Enabled:  []kubeschedulerconfig.Plugin{{Name: capacityestimationbinder.Name}},
-		Disabled: []kubeschedulerconfig.Plugin{{Name: defaultbinder.Name}},
-	}
 	opts := &kubescheduleroptions.Options{
 		ComponentConfig: kcfg,
 		Logs:            logs.NewOptions(),
@@ -121,6 +119,11 @@ func buildKubeSchedulerCompletedConfig(kcfg *kubeschedulerconfig.KubeSchedulerCo
 
 	// completely ignore the events
 	cc.EventBroadcaster = events.NewEventBroadcasterAdapter(fakeclientset.NewSimpleClientset())
+
+	// black magic
+	cc.Client = fakeclientset.NewSimpleClientset()
+	cc.InformerFactory = informers.NewSharedInformerFactory(cc.Client, 0)
+	// TODO: support fake dynamic client, it's difficult for now because of the implementation of testing codes in client-go
 
 	return &cc, nil
 }

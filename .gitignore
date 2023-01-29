@@ -22,3 +22,6 @@ pod.yaml
 schedulerconfig
 kubeconfig
 
+# IDE
+.idea/
+
