@@ -8,7 +8,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	errors2 "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -275,7 +275,7 @@ func (s *genericSimulator) InitializeWithClient() error {
 	}
 
 	csiNodeItems, err := s.client.StorageV1().CSINodes().List(context.TODO(), listOptions)
-	if err != nil && !errors2.IsNotFound(err) {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("unable to list csi nodes: %v", err)
 	}
 
@@ -286,7 +286,7 @@ func (s *genericSimulator) InitializeWithClient() error {
 	}
 
 	csiDriverItems, err := s.client.StorageV1().CSIDrivers().List(context.TODO(), listOptions)
-	if err != nil && !errors2.IsNotFound(err) {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("unable to list csi drivers: %v", err)
 	}
 
@@ -297,7 +297,7 @@ func (s *genericSimulator) InitializeWithClient() error {
 	}
 
 	csiStorageCapacityItems, err := s.client.StorageV1().CSIStorageCapacities(metav1.NamespaceAll).List(context.TODO(), listOptions)
-	if err != nil && !errors2.IsNotFound(err) {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("unable to list csi storage capacity: %v", err)
 	}
 
