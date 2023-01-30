@@ -6,6 +6,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	apiv1 "k8s.io/kubernetes/pkg/apis/core/v1"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 )
@@ -28,6 +29,8 @@ func NewSinglePodGenerator(podTemplate *corev1.Pod) PodGenerator {
 
 func (g *singlePodGenerator) Generate() *corev1.Pod {
 	pod := g.podTemplate.DeepCopy()
+
+	apiv1.SetObjectDefaults_Pod(pod)
 
 	// reset pod
 	pod.Spec.NodeName = ""

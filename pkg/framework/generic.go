@@ -82,6 +82,7 @@ var (
 // Status capture all scheduled pods with reason why the estimation could not continue
 type Status struct {
 	Pods       []*corev1.Pod
+	Resource   string
 	StopReason string
 }
 
@@ -183,7 +184,10 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 	initObjects := getInitObjects(restMapper, dynamicClient)
 	for _, unstructuredObj := range initObjects {
 		obj := initResources[unstructuredObj.GetObjectKind().GroupVersionKind()]()
-		runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.(*unstructured.Unstructured).UnstructuredContent(), obj)
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.(*unstructured.Unstructured).UnstructuredContent(), obj); err != nil {
+			return nil, err
+		}
+
 		if err := kubeSchedulerConfig.Client.(testing.FakeClient).Tracker().Add(obj); err != nil {
 			return nil, err
 		}
@@ -240,9 +244,9 @@ func (s *genericSimulator) Stop(reason string) {
 
 	s.status.StopReason = reason
 	s.stopped = true
+	close(s.stopCh)
 	close(s.informerCh)
 	close(s.schedulerCh)
-	close(s.stopCh)
 }
 
 func (s *genericSimulator) CreatePod(pod *corev1.Pod) error {
@@ -251,17 +255,14 @@ func (s *genericSimulator) CreatePod(pod *corev1.Pod) error {
 }
 
 func (s *genericSimulator) Run() error {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	// wait for all informer cache synced
 	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
 	if s.dynInformerFactory != nil {
 		s.dynInformerFactory.WaitForCacheSync(s.informerCh)
 	}
-	go s.scheduler.Run(ctx)
+	go s.scheduler.Run(context.TODO())
 
 	<-s.stopCh
-	cancel()
 
 	return nil
 }
@@ -323,7 +324,7 @@ func getRecorderFactory(cc *schedconfig.CompletedConfig) profile.RecorderFactory
 func getInitObjects(restMapper meta.RESTMapper, dynClient dynamic.Interface) []runtime.Object {
 	once.Do(func() {
 		// each item is UnstructuredList
-		for gvk, _ := range initResources {
+		for gvk := range initResources {
 			restMapping, err := restMapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 			if err != nil && !meta.IsNoMatchError(err) {
 				fmt.Printf("unable to get rest mapping for %s, error: %s", gvk.String(), err.Error())
@@ -349,7 +350,7 @@ func getInitObjects(restMapper meta.RESTMapper, dynClient dynamic.Interface) []r
 					}
 				}
 
-				list.EachListItem(func(object runtime.Object) error {
+				_ = list.EachListItem(func(object runtime.Object) error {
 					initObjects = append(initObjects, object)
 					return nil
 				})

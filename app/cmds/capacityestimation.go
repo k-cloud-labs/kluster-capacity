@@ -20,13 +20,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
+	corev1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	cliflag "k8s.io/component-base/cli/flag"
-	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
@@ -73,21 +73,12 @@ func NewCapacityEstimationCmd() *cobra.Command {
 }
 
 func validate(opt *options.CapacityEstimationOptions) error {
-	if len(opt.PodTemplate) == 0 && len(opt.PodFromCluster) == 0 {
+	if len(opt.PodTemplates) == 0 && len(opt.PodFromClusters) == 0 {
 		return errors.New("pod template file and pod from cluster both is missing")
 	}
 
-	if len(opt.PodTemplate) != 0 && len(opt.PodFromCluster) != 0 {
+	if len(opt.PodTemplates) != 0 && len(opt.PodFromClusters) != 0 {
 		return errors.New("pod template file and pod from cluster is exclusive")
-	}
-
-	if len(opt.PodFromCluster) > 0 {
-		strs := strings.Split(opt.PodFromCluster, "/")
-		if len(strs) != 2 {
-			return errors.New("format of pod from cluster is incorrect")
-		}
-		opt.Namespace = strs[0]
-		opt.Name = strs[1]
 	}
 
 	_, present := os.LookupEnv("KC_INCLUSTER")
@@ -102,11 +93,6 @@ func validate(opt *options.CapacityEstimationOptions) error {
 
 func run(opt *options.CapacityEstimationOptions) error {
 	conf := options.NewCapacityEstimationConfig(opt)
-
-	cc, err := utils.BuildKubeSchedulerCompletedConfig(opt.SchedulerConfig)
-	if err != nil {
-		return err
-	}
 
 	cfg, err := utils.BuildRestConfig(conf.Options.KubeConfig)
 	if err != nil {
@@ -124,33 +110,59 @@ func run(opt *options.CapacityEstimationOptions) error {
 		return fmt.Errorf("failed to parse pod spec file: %v ", err)
 	}
 
-	report, err := runSimulator(conf, cc)
+	reports, err := runSimulator(conf)
 	if err != nil {
 		return err
 	}
 
-	if err := report.Print(conf.Options.Verbose, conf.Options.OutputFormat); err != nil {
+	if err := reports.Print(conf.Options.Verbose, conf.Options.OutputFormat); err != nil {
 		return fmt.Errorf("error while printing: %v", err)
 	}
 
 	return nil
 }
 
-func runSimulator(conf *options.CapacityEstimationConfig, kubeSchedulerConfig *schedconfig.CompletedConfig) (framework.Printer, error) {
-	s, err := capacityestimation.NewCESimulatorExecutor(kubeSchedulerConfig, conf.RestConfig, conf.Pod, conf.Options.MaxLimit, conf.Options.ExcludeNodes)
+func runSimulator(conf *options.CapacityEstimationConfig) (framework.Printer, error) {
+	run := func(podTemplate *corev1.Pod) (framework.Printer, error) {
+		cc, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig)
+		if err != nil {
+			return nil, err
+		}
+		s, err := capacityestimation.NewCESimulatorExecutor(cc, conf.RestConfig, podTemplate, conf.Options.MaxLimit, conf.Options.ExcludeNodes)
+		if err != nil {
+			return nil, err
+		}
+
+		err = s.Initialize()
+		if err != nil {
+			return nil, err
+		}
+
+		err = s.Run()
+		if err != nil {
+			return nil, err
+		}
+
+		return s.Report(), nil
+	}
+
+	reports := capacityestimation.CapacityEstimationReviews{}
+	g := errgroup.Group{}
+	for _, pod := range conf.Pod {
+		copy := pod.DeepCopy()
+		g.Go(func() error {
+			report, err := run(copy)
+			if err != nil {
+				return err
+			}
+			reports = append(reports, report.(*capacityestimation.CapacityEstimationReview))
+			return nil
+		})
+	}
+	err := g.Wait()
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.Initialize()
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.Run()
-	if err != nil {
-		return nil, err
-	}
-
-	return s.Report(), nil
+	return reports, nil
 }

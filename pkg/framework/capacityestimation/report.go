@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
+	"github.com/jedib0t/go-pretty/v6/table"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,6 +22,8 @@ type CapacityEstimationReview struct {
 	Spec   CapacityEstimationReviewSpec   `json:"spec"`
 	Status CapacityEstimationReviewStatus `json:"status"`
 }
+
+type CapacityEstimationReviews []*CapacityEstimationReview
 
 type CapacityEstimationReviewSpec struct {
 	// the pod desired for scheduling
@@ -83,6 +86,46 @@ func (r *CapacityEstimationReview) Print(verbose bool, format string) error {
 	default:
 		return fmt.Errorf("output format %q not recognized", format)
 	}
+}
+
+func (r CapacityEstimationReviews) Print(verbose bool, format string) error {
+	t := table.NewWriter()
+	t.AppendHeader(table.Row{"spec", "replicas"})
+	for i, review := range r {
+		if i > 0 && (format != "" || verbose) {
+			fmt.Println("---------------------------------------------------------------")
+		}
+		switch format {
+		case "json":
+			err := capacityEstimationReviewPrintJson(review)
+			if err != nil {
+				return err
+			}
+		case "yaml":
+			err := capacityEstimationReviewPrintYaml(review)
+			if err != nil {
+				return err
+			}
+		case "":
+			if verbose {
+				capacityEstimationReviewPrettyPrint(review, verbose)
+			} else {
+				output, err := json.Marshal(review.Spec.PodRequirements[0])
+				if err != nil {
+					return err
+				}
+				t.AppendRow(table.Row{string(output), review.Status.Replicas})
+			}
+		default:
+			return fmt.Errorf("output format %q not recognized", format)
+		}
+	}
+
+	if format == "" && !verbose {
+		fmt.Println(t.Render())
+	}
+
+	return nil
 }
 
 func generateReport(pods []*corev1.Pod, status pkgframework.Status) *CapacityEstimationReview {
@@ -179,8 +222,10 @@ func getPodsRequirements(pods []*corev1.Pod) []*Requirements {
 func getResourceRequest(pod *corev1.Pod) *Resources {
 	result := Resources{
 		PrimaryResources: corev1.ResourceList{
-			corev1.ResourceCPU:    *resource.NewMilliQuantity(0, resource.DecimalSI),
-			corev1.ResourceMemory: *resource.NewQuantity(0, resource.BinarySI),
+			corev1.ResourceCPU:              *resource.NewMilliQuantity(0, resource.DecimalSI),
+			corev1.ResourceMemory:           *resource.NewQuantity(0, resource.BinarySI),
+			corev1.ResourceStorage:          *resource.NewQuantity(0, resource.BinarySI),
+			corev1.ResourceEphemeralStorage: *resource.NewQuantity(0, resource.BinarySI),
 		},
 	}
 
@@ -193,6 +238,12 @@ func getResourceRequest(pod *corev1.Pod) *Resources {
 			case corev1.ResourceCPU:
 				rQuantity.Add(*(result.PrimaryResources.Cpu()))
 				result.PrimaryResources[corev1.ResourceCPU] = rQuantity
+			case corev1.ResourceStorage:
+				rQuantity.Add(*(result.PrimaryResources.Storage()))
+				result.PrimaryResources[corev1.ResourceStorage] = rQuantity
+			case corev1.ResourceEphemeralStorage:
+				rQuantity.Add(*(result.PrimaryResources.StorageEphemeral()))
+				result.PrimaryResources[corev1.ResourceEphemeralStorage] = rQuantity
 			default:
 				if schedutil.IsScalarResourceName(rName) {
 					// Lazily allocate this map only if required.
