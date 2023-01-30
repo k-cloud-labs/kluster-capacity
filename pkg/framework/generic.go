@@ -2,14 +2,20 @@ package framework
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	resourcev1alpha1 "k8s.io/api/resource/v1alpha1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
@@ -18,18 +24,59 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
-	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
+	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	"k8s.io/kubernetes/pkg/scheduler/profile"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/generic"
+)
+
+func init() {
+	if err := corev1.AddToScheme(legacyscheme.Scheme); err != nil {
+		fmt.Printf("err: %v\n", err)
+	}
+	// add your own scheme here to use dynamic informer factory when you have some custom filter plugins
+	// which uses other resources than defined in scheduler.
+	// for details, refer to k8s.io/kubernetes/pkg/scheduler/eventhandlers.go
+}
+
+var (
+	initResources = map[schema.GroupVersionKind]func() runtime.Object{
+		corev1.SchemeGroupVersion.WithKind("Pod"):                   func() runtime.Object { return &corev1.Pod{} },
+		corev1.SchemeGroupVersion.WithKind("Node"):                  func() runtime.Object { return &corev1.Node{} },
+		corev1.SchemeGroupVersion.WithKind("PersistentVolume"):      func() runtime.Object { return &corev1.PersistentVolume{} },
+		corev1.SchemeGroupVersion.WithKind("PersistentVolumeClaim"): func() runtime.Object { return &corev1.PersistentVolumeClaim{} },
+		storagev1.SchemeGroupVersion.WithKind("StorageClass"):       func() runtime.Object { return &storagev1.StorageClass{} },
+		storagev1.SchemeGroupVersion.WithKind("CSINode"):            func() runtime.Object { return &storagev1.CSINode{} },
+		storagev1.SchemeGroupVersion.WithKind("CSIDriver"):          func() runtime.Object { return &storagev1.CSIDriver{} },
+		storagev1.SchemeGroupVersion.WithKind("CSIStorageCapacity"): func() runtime.Object { return &storagev1.CSIStorageCapacity{} },
+		resourcev1alpha1.SchemeGroupVersion.WithKind("PodScheduling"): func() runtime.Object {
+			if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
+				return &resourcev1alpha1.PodScheduling{}
+			}
+
+			return nil
+		},
+		resourcev1alpha1.SchemeGroupVersion.WithKind("ResourceClaim"): func() runtime.Object {
+			if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
+				return &resourcev1alpha1.ResourceClaim{}
+			}
+
+			return nil
+		},
+	}
+	once        sync.Once
+	initObjects []runtime.Object
 )
 
 // Status capture all scheduled pods with reason why the estimation could not continue
@@ -39,16 +86,18 @@ type Status struct {
 }
 
 type genericSimulator struct {
-	fakeClient          clientset.Interface
-	client              clientset.Interface
+	// fake clientset used by scheduler
+	fakeClient clientset.Interface
+	// fake informer factory used by scheduler
 	fakeInformerFactory informers.SharedInformerFactory
-	informerFactory     informers.SharedInformerFactory
-	dynInformerFactory  dynamicinformer.DynamicSharedInformerFactory
+	// TODO: follow kubernetes master branch code
+	dynInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	restMapper         meta.RESTMapper
 
 	// scheduler
 	scheduler           *scheduler.Scheduler
 	excludeNodes        sets.Set[string]
-	outOfTreeRegistry   runtime.Registry
+	outOfTreeRegistry   frameworkruntime.Registry
 	customBind          kubeschedulerconfig.PluginSet
 	customPreBind       kubeschedulerconfig.PluginSet
 	customPostBind      kubeschedulerconfig.PluginSet
@@ -75,7 +124,7 @@ func WithExcludeNodes(excludeNodes []string) Option {
 	}
 }
 
-func WithOutOfTreeRegistry(registry runtime.Registry) Option {
+func WithOutOfTreeRegistry(registry frameworkruntime.Registry) Option {
 	return func(s *genericSimulator) {
 		s.outOfTreeRegistry = registry
 	}
@@ -124,14 +173,27 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 		return nil, err
 	}
 
-	client := clientset.NewForConfigOrDie(restConfig)
-	informerFactory := informers.NewSharedInformerFactory(client, 0)
+	dynamicClient := dynamic.NewForConfigOrDie(restConfig)
+	restMapper, err := apiutil.NewDynamicRESTMapper(restConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// black magic
+	initObjects := getInitObjects(restMapper, dynamicClient)
+	for _, unstructuredObj := range initObjects {
+		obj := initResources[unstructuredObj.GetObjectKind().GroupVersionKind()]()
+		runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.(*unstructured.Unstructured).UnstructuredContent(), obj)
+		if err := kubeSchedulerConfig.Client.(testing.FakeClient).Tracker().Add(obj); err != nil {
+			return nil, err
+		}
+	}
+
 	s := &genericSimulator{
 		fakeClient:          kubeSchedulerConfig.Client,
-		client:              client,
+		restMapper:          restMapper,
 		stopCh:              make(chan struct{}),
 		fakeInformerFactory: kubeSchedulerConfig.InformerFactory,
-		informerFactory:     informerFactory,
 		informerCh:          make(chan struct{}),
 		schedulerCh:         make(chan struct{}),
 	}
@@ -204,158 +266,6 @@ func (s *genericSimulator) Run() error {
 	return nil
 }
 
-func (s *genericSimulator) InitializeWithClient() error {
-	listOptions := metav1.ListOptions{ResourceVersion: "0"}
-	createOptions := metav1.CreateOptions{}
-
-	nsItems, err := s.client.CoreV1().Namespaces().List(context.TODO(), listOptions)
-	if err != nil {
-		return fmt.Errorf("unable to list ns: %v", err)
-	}
-
-	for _, item := range nsItems.Items {
-		if _, err := s.fakeClient.CoreV1().Namespaces().Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy ns: %v", err)
-		}
-	}
-
-	podItems, err := s.client.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), listOptions)
-	if err != nil {
-		return fmt.Errorf("unable to list pods: %v", err)
-	}
-
-	for _, item := range podItems.Items {
-		// selector := fmt.Sprintf("status.phase!=%v,status.phase!=%v", v1.PodSucceeded, v1.PodFailed)
-		// field selector are not supported by fake clientset/informers
-		if item.Status.Phase != corev1.PodSucceeded && item.Status.Phase != corev1.PodFailed {
-			if _, err := s.fakeClient.CoreV1().Pods(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
-				return fmt.Errorf("unable to copy pod: %v", err)
-			}
-		}
-	}
-
-	nodeItems, err := s.client.CoreV1().Nodes().List(context.TODO(), listOptions)
-	if err != nil {
-		return fmt.Errorf("unable to list nodes: %v", err)
-	}
-
-	for _, item := range nodeItems.Items {
-		if s.excludeNodes.Has(item.Name) {
-			continue
-		}
-		if _, err := s.fakeClient.CoreV1().Nodes().Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy node: %v", err)
-		}
-	}
-
-	serviceItems, err := s.client.CoreV1().Services(metav1.NamespaceAll).List(context.TODO(), listOptions)
-	if err != nil {
-		return fmt.Errorf("unable to list services: %v", err)
-	}
-
-	for _, item := range serviceItems.Items {
-		if _, err := s.fakeClient.CoreV1().Services(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy service: %v", err)
-		}
-	}
-
-	pvcItems, err := s.client.CoreV1().PersistentVolumeClaims(metav1.NamespaceAll).List(context.TODO(), listOptions)
-	if err != nil {
-		return fmt.Errorf("unable to list pvcs: %v", err)
-	}
-
-	for _, item := range pvcItems.Items {
-		if _, err := s.fakeClient.CoreV1().PersistentVolumeClaims(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy pvc: %v", err)
-		}
-	}
-
-	pvItems, err := s.client.CoreV1().PersistentVolumes().List(context.TODO(), listOptions)
-	if err != nil {
-		return fmt.Errorf("unable to list pvs: %v", err)
-	}
-
-	for _, item := range pvItems.Items {
-		if _, err := s.fakeClient.CoreV1().PersistentVolumes().Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy pv: %v", err)
-		}
-	}
-
-	storageClassesItems, err := s.client.StorageV1().StorageClasses().List(context.TODO(), listOptions)
-	if err != nil {
-		return fmt.Errorf("unable to list storage classes: %v", err)
-	}
-
-	for _, item := range storageClassesItems.Items {
-		if _, err := s.fakeClient.StorageV1().StorageClasses().Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy storage class: %v", err)
-		}
-	}
-
-	csiNodeItems, err := s.client.StorageV1().CSINodes().List(context.TODO(), listOptions)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("unable to list csi nodes: %v", err)
-	}
-
-	for _, item := range csiNodeItems.Items {
-		if _, err := s.fakeClient.StorageV1().CSINodes().Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy csi node: %v", err)
-		}
-	}
-
-	csiDriverItems, err := s.client.StorageV1().CSIDrivers().List(context.TODO(), listOptions)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("unable to list csi drivers: %v", err)
-	}
-
-	for _, item := range csiDriverItems.Items {
-		if _, err := s.fakeClient.StorageV1().CSIDrivers().Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy csi driver: %v", err)
-		}
-	}
-
-	csiStorageCapacityItems, err := s.client.StorageV1().CSIStorageCapacities(metav1.NamespaceAll).List(context.TODO(), listOptions)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("unable to list csi storage capacity: %v", err)
-	}
-
-	for _, item := range csiStorageCapacityItems.Items {
-		if _, err := s.fakeClient.StorageV1().CSIStorageCapacities(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
-			return fmt.Errorf("unable to copy csi storage capacity: %v", err)
-		}
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
-		podSchedulingItems, err := s.client.ResourceV1alpha1().PodSchedulings(metav1.NamespaceAll).List(context.TODO(), listOptions)
-		if err != nil {
-			return fmt.Errorf("unable to list pod schedulings: %v", err)
-		}
-
-		for _, item := range podSchedulingItems.Items {
-			if _, err := s.fakeClient.ResourceV1alpha1().PodSchedulings(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
-				return fmt.Errorf("unable to copy pod scheduling: %v", err)
-			}
-		}
-
-		resourceReclaimItems, err := s.client.ResourceV1alpha1().ResourceClaims(metav1.NamespaceAll).List(context.TODO(), listOptions)
-		if err != nil {
-			return fmt.Errorf("unable to list resource reclaims: %v", err)
-		}
-
-		for _, item := range resourceReclaimItems.Items {
-			if _, err := s.fakeClient.ResourceV1alpha1().ResourceClaims(item.Namespace).Create(context.TODO(), &item, createOptions); err != nil {
-				return fmt.Errorf("unable to copy resource reclaim: %v", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (s *genericSimulator) InitializeWithInformerFactory() error {
-	return errors.New("not implemented yet")
-}
-
 func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*scheduler.Scheduler, error) {
 	// custom event handlers
 	for _, handler := range s.customEventHandlers {
@@ -406,4 +316,46 @@ func getRecorderFactory(cc *schedconfig.CompletedConfig) profile.RecorderFactory
 	return func(name string) events.EventRecorder {
 		return cc.EventBroadcaster.NewRecorder(name)
 	}
+}
+
+// getInitObjects return all objects need to add to scheduler.
+// it's pkg scope for multi scheduler to avoid calling too much times of real kube-apiserver
+func getInitObjects(restMapper meta.RESTMapper, dynClient dynamic.Interface) []runtime.Object {
+	once.Do(func() {
+		// each item is UnstructuredList
+		for gvk, _ := range initResources {
+			restMapping, err := restMapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+			if err != nil && !meta.IsNoMatchError(err) {
+				fmt.Printf("unable to get rest mapping for %s, error: %s", gvk.String(), err.Error())
+				os.Exit(1)
+			}
+
+			if restMapping != nil {
+				var (
+					list *unstructured.UnstructuredList
+					err  error
+				)
+				if restMapping.Scope.Name() == meta.RESTScopeNameRoot {
+					list, err = dynClient.Resource(restMapping.Resource).List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
+					if err != nil && !apierrors.IsNotFound(err) {
+						fmt.Printf("unable to list %s, error: %s", gvk.String(), err.Error())
+						os.Exit(1)
+					}
+				} else {
+					list, err = dynClient.Resource(restMapping.Resource).Namespace(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
+					if err != nil && !apierrors.IsNotFound(err) {
+						fmt.Printf("unable to list %s, error: %s", gvk.String(), err.Error())
+						os.Exit(1)
+					}
+				}
+
+				list.EachListItem(func(object runtime.Object) error {
+					initObjects = append(initObjects, object)
+					return nil
+				})
+			}
+		}
+	})
+
+	return initObjects
 }

@@ -12,8 +12,6 @@ const (
 
 type Simulator interface {
 	Run() error
-	InitializeWithClient() error
-	InitializeWithInformerFactory() error
 	CreatePod(pod *corev1.Pod) error
 	UpdateStatus(pod *corev1.Pod)
 	Status() Status
@@ -22,8 +20,7 @@ type Simulator interface {
 
 type SimulatorExecutor interface {
 	Run() error
-	InitializeWithClient() error
-	InitializeWithInformerFactory() error
+	Initialize() error
 	Report() Printer
 }
 
