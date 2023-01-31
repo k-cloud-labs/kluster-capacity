@@ -2,6 +2,7 @@ package options
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,28 +16,62 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	apiv1 "k8s.io/kubernetes/pkg/apis/core/v1"
-	"k8s.io/kubernetes/pkg/apis/core/validation"
 )
 
 type CapacityEstimationOptions struct {
-	PodTemplate     string
-	PodFromCluster  string
-	Namespace       string
-	Name            string
+	PodTemplates    string
+	PodFromClusters NamespaceNames
 	SchedulerConfig string
 	OutputFormat    string
 	KubeConfig      string
 	MaxLimit        int
-	// key=v#key=v#key=v, key is resource name and v is resource value
-	ResourceList []string
-	Verbose      bool
-	ExcludeNodes []string
+	Verbose         bool
+	ExcludeNodes    []string
+}
+
+type NamespaceNames []*NamespaceName
+
+type NamespaceName struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
+func (n NamespaceNames) Set(nns string) error {
+	for _, nn := range strings.Split(nns, ",") {
+		nnStrs := strings.Split(nn, "/")
+		if len(nnStrs) == 1 {
+			n = append(n, &NamespaceName{
+				Namespace: metav1.NamespaceDefault,
+				Name:      nnStrs[0],
+			})
+		} else if len(nnStrs) == 2 {
+			n = append(n, &NamespaceName{
+				Namespace: nnStrs[0],
+				Name:      nnStrs[1],
+			})
+		} else {
+			return errors.New("invalid format")
+		}
+	}
+
+	return nil
+}
+
+func (n NamespaceNames) String() string {
+	strs := []string{}
+	for _, nn := range n {
+		strs = append(strs, fmt.Sprintf("%s/%s", nn.Namespace, nn.Name))
+	}
+
+	return strings.Join(strs, ",")
+}
+
+func (n NamespaceNames) Type() string {
+	return "namespaceNames"
 }
 
 type CapacityEstimationConfig struct {
-	Pod        *corev1.Pod
+	Pod        []*corev1.Pod
 	KubeClient clientset.Interface
 	// TODO: try to use fake dynamicInformerFactory
 	RestConfig *restclient.Config
@@ -50,17 +85,14 @@ func NewCapacityEstimationConfig(opt *CapacityEstimationOptions) *CapacityEstima
 }
 
 func NewCapacityEstimationOptions() *CapacityEstimationOptions {
-	return &CapacityEstimationOptions{
-		ResourceList: make([]string, 0),
-	}
+	return &CapacityEstimationOptions{}
 }
 
 func (s *CapacityEstimationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeConfig, "kubeconfig", s.KubeConfig, "Path to the kubeconfig file to use for the analysis.")
-	fs.StringVar(&s.PodTemplate, "pod-template", s.PodTemplate, "Path to JSON or YAML file containing pod definition. Exclusive with --pod-from-cluster")
-	fs.StringVar(&s.PodFromCluster, "pod-from-cluster", s.PodFromCluster, "Namespace/Name of the pod from existing cluster. Exclusive with --pod-template")
+	fs.StringVar(&s.PodTemplates, "pod-templates", s.PodTemplates, "Path to JSON or YAML file containing pod definition. Comma seperated and Exclusive with --pod-from-clusters")
+	fs.Var(&s.PodFromClusters, "pod-from-clusters", "Namespace/Name of the pod from existing cluster. Comma seperated and Exclusive with --pod-templates")
 	fs.IntVar(&s.MaxLimit, "max-limit", 0, "Number of instances of pod to be scheduled after which analysis stops. By default unlimited.")
-	fs.StringSliceVar(&s.ResourceList, "resource-list", s.ResourceList, "Resource list used for pod to schedule to return the result in batches.")
 	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration.")
 	fs.BoolVar(&s.Verbose, "verbose", s.Verbose, "Verbose mode")
 	fs.StringVarP(&s.OutputFormat, "output", "o", s.OutputFormat, "Output format. One of: json|yaml (Note: output is not versioned or guaranteed to be stable across releases).")
@@ -68,62 +100,57 @@ func (s *CapacityEstimationOptions) AddFlags(fs *pflag.FlagSet) {
 }
 
 func (s *CapacityEstimationConfig) ParseAPISpec() error {
-	var (
-		err          error
-		versionedPod = &corev1.Pod{}
-	)
+	getPodFromTemplate := func(template string) (*corev1.Pod, error) {
+		var (
+			err          error
+			versionedPod = &corev1.Pod{}
+			spec         io.Reader
+		)
 
-	if len(s.Options.PodTemplate) != 0 {
-		var spec io.Reader
-
-		if strings.HasPrefix(s.Options.PodTemplate, "http://") || strings.HasPrefix(s.Options.PodTemplate, "https://") {
-			response, err := http.Get(s.Options.PodTemplate)
+		if strings.HasPrefix(template, "http://") || strings.HasPrefix(template, "https://") {
+			response, err := http.Get(template)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			defer response.Body.Close()
 			if response.StatusCode != http.StatusOK {
-				return fmt.Errorf("unable to read URL %q, server reported %v, status code=%v", s.Options.PodTemplate, response.Status, response.StatusCode)
+				return nil, fmt.Errorf("unable to read URL %q, server reported %v, status code=%v", template, response.Status, response.StatusCode)
 			}
 			spec = response.Body
 		} else {
-			filename, _ := filepath.Abs(s.Options.PodTemplate)
+			filename, _ := filepath.Abs(template)
 			spec, err = os.Open(filename)
 			if err != nil {
-				return fmt.Errorf("failed to open config file: %v", err)
+				return nil, fmt.Errorf("failed to open config file: %v", err)
 			}
 		}
 
 		decoder := yaml.NewYAMLOrJSONDecoder(spec, 4096)
 		err = decoder.Decode(versionedPod)
 		if err != nil {
-			return fmt.Errorf("failed to decode config file: %v", err)
+			return nil, fmt.Errorf("failed to decode config file: %v", err)
+		}
+
+		return versionedPod, nil
+	}
+
+	if len(s.Options.PodTemplates) != 0 {
+		for _, template := range strings.Split(s.Options.PodTemplates, ",") {
+			pod, err := getPodFromTemplate(template)
+			if err != nil {
+				return err
+			}
+			s.Pod = append(s.Pod, pod)
 		}
 	} else {
-		versionedPod, err = s.KubeClient.CoreV1().Pods(s.Options.Namespace).Get(context.TODO(), s.Options.Name, metav1.GetOptions{ResourceVersion: "0"})
-		if err != nil {
-			return err
+		for _, nn := range s.Options.PodFromClusters {
+			pod, err := s.KubeClient.CoreV1().Pods(nn.Namespace).Get(context.TODO(), nn.Name, metav1.GetOptions{ResourceVersion: "0"})
+			if err != nil {
+				return err
+			}
+			s.Pod = append(s.Pod, pod)
 		}
 	}
 
-	if versionedPod.ObjectMeta.Namespace == "" {
-		versionedPod.ObjectMeta.Namespace = "default"
-	}
-
-	apiv1.SetObjectDefaults_Pod(versionedPod)
-
-	internalPod := &api.Pod{}
-	if err := apiv1.Convert_v1_Pod_To_core_Pod(versionedPod, internalPod, nil); err != nil {
-		return fmt.Errorf("unable to convert to internal version: %#v", err)
-	}
-	if errs := validation.ValidatePodCreate(internalPod, validation.PodValidationOptions{}); len(errs) > 0 {
-		var errStrs []string
-		for _, err := range errs {
-			errStrs = append(errStrs, fmt.Sprintf("%v: %v", err.Type, err.Field))
-		}
-		return fmt.Errorf("invalid pod: %#v", strings.Join(errStrs, ", "))
-	}
-
-	s.Pod = versionedPod
 	return nil
 }

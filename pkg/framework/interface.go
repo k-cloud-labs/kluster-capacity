@@ -2,6 +2,7 @@ package framework
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 const (
@@ -12,8 +13,7 @@ const (
 
 type Simulator interface {
 	Run() error
-	InitializeWithClient() error
-	InitializeWithInformerFactory() error
+	InitTheWorld(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
 	UpdateStatus(pod *corev1.Pod)
 	Status() Status
@@ -22,8 +22,7 @@ type Simulator interface {
 
 type SimulatorExecutor interface {
 	Run() error
-	InitializeWithClient() error
-	InitializeWithInformerFactory() error
+	Initialize() error
 	Report() Printer
 }
 

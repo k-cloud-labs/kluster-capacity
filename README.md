@@ -20,6 +20,11 @@ Cluster capacity consists of capacities of individual cluster nodes. Capacity co
 
 Overall remaining allocatable capacity is a rough estimation since it does not assume all resources being distributed among nodes. Goal is to analyze remaining allocatable resources and estimate available capacity that is still consumable in terms of a number of instances of a pod with given requirements that can be scheduled in a cluster.
 
+### Enhancement
+Some enhancement than cluster capacity mentioned above.
+- Support use existing pod as pod template directly from cluster.
+- Support batch simulation for different pod template.
+
 ### Build and Run
 
 Build the framework:
@@ -34,9 +39,9 @@ and run the analysis:
 
 ```sh
 # use an specified pod yaml file as pod template
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> 
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> 
 # use an existing pod from cluster as pod template
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-from-cluster <namespace/name key of the pod> 
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-from-clusters <namespace/name key of the pod> 
 ```
 For more information about available options run:
 
@@ -50,7 +55,7 @@ Assuming a cluster is running with 4 nodes and 1 master with each node with 2 CP
 With pod resource requirements to be `150m` of CPU and ``100Mi`` of Memory.
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> --verbose
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -74,7 +79,7 @@ Once the number of running pods in the cluster grows and the analysis is run aga
 the number of schedulable pods decreases as well:
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> --verbose
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -98,8 +103,8 @@ Pod distribution among nodes:
 `ce` command has a flag `--output (-o)` to format its output as json or yaml.
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> -o json
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-template <path to pod template> -o yaml
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> -o json
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> -o yaml
 ```
 
 The json or yaml output is not versioned and is not guaranteed to be stable across various releases.

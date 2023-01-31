@@ -28,7 +28,7 @@ type simulator struct {
 	simulated    int
 }
 
-// NewCESimulator create a ce simulator which is completely independent of apiserver so no need
+// NewCESimulatorExecutor create a ce simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
 func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, kubeConfig *restclient.Config, simulatedPod *corev1.Pod, maxPods int, excludeNodes []string) (pkgframework.SimulatorExecutor, error) {
 	s := &simulator{
@@ -92,8 +92,8 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 	return s, nil
 }
 
-func (s *simulator) InitializeWithClient() error {
-	err := s.Simulator.InitializeWithClient()
+func (s *simulator) Initialize() error {
+	err := s.Simulator.InitTheWorld()
 	if err != nil {
 		return err
 	}

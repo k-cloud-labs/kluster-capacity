@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
@@ -15,22 +14,12 @@ import (
 	kubeschedulerconfigv1 "k8s.io/kube-scheduler/config/v1"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	kubescheduleroptions "k8s.io/kubernetes/cmd/kube-scheduler/app/options"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	kubeschedulerscheme "k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 )
-
-func init() {
-	if err := corev1.AddToScheme(legacyscheme.Scheme); err != nil {
-		fmt.Printf("err: %v\n", err)
-	}
-	// add your own scheme here to use dynamic informer factory when you have some custom filter plugins
-	// which uses other resources than defined in scheduler.
-	// for details, refer to k8s.io/kubernetes/pkg/scheduler/eventhandlers.go
-}
 
 func BuildRestConfig(config string) (*restclient.Config, error) {
 	if len(config) != 0 {
@@ -123,7 +112,6 @@ func buildKubeSchedulerCompletedConfig(kcfg *kubeschedulerconfig.KubeSchedulerCo
 	// black magic
 	cc.Client = fakeclientset.NewSimpleClientset()
 	cc.InformerFactory = informers.NewSharedInformerFactory(cc.Client, 0)
-	// TODO: support fake dynamic client, it's difficult for now because of the implementation of testing codes in client-go
 
 	return &cc, nil
 }
