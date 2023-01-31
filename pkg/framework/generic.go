@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
@@ -292,6 +293,17 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	// custom event handlers
 	for _, handler := range s.customEventHandlers {
 		handler()
+	}
+
+	// register default generic plugin
+	if s.outOfTreeRegistry == nil {
+		s.outOfTreeRegistry = make(frameworkruntime.Registry)
+	}
+	err := s.outOfTreeRegistry.Register(generic.Name, func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
+		return generic.New(s.fakeClient)
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}

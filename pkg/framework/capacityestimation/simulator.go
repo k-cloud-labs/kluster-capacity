@@ -15,7 +15,6 @@ import (
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/capacityestimation"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/generic"
 )
 
 // only support one scheduler for now and the scheduler name is "default-scheduler"
@@ -42,9 +41,6 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 		pkgframework.WithExcludeNodes(excludeNodes),
 		// add your custom plugins
 		pkgframework.WithOutOfTreeRegistry(frameworkruntime.Registry{
-			generic.Name: func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
-				return generic.New(kubeSchedulerConfig.Client)
-			},
 			capacityestimation.Name: func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
 				return capacityestimation.New(s.postBindHook)
 			},

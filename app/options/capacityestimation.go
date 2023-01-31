@@ -20,7 +20,7 @@ import (
 
 type CapacityEstimationOptions struct {
 	PodTemplates    string
-	PodFromClusters NamespaceNames
+	PodsFromCluster NamespaceNames
 	SchedulerConfig string
 	OutputFormat    string
 	KubeConfig      string
@@ -90,8 +90,8 @@ func NewCapacityEstimationOptions() *CapacityEstimationOptions {
 
 func (s *CapacityEstimationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeConfig, "kubeconfig", s.KubeConfig, "Path to the kubeconfig file to use for the analysis.")
-	fs.StringVar(&s.PodTemplates, "pod-templates", s.PodTemplates, "Path to JSON or YAML file containing pod definition. Comma seperated and Exclusive with --pod-from-clusters")
-	fs.Var(&s.PodFromClusters, "pod-from-clusters", "Namespace/Name of the pod from existing cluster. Comma seperated and Exclusive with --pod-templates")
+	fs.StringVar(&s.PodTemplates, "pod-templates", s.PodTemplates, "Path to JSON or YAML file containing pod definition. Comma seperated and Exclusive with --pods-from-cluster")
+	fs.Var(&s.PodsFromCluster, "pods-from-cluster", "Namespace/Name of the pod from existing cluster. Comma seperated and Exclusive with --pod-templates")
 	fs.IntVar(&s.MaxLimit, "max-limit", 0, "Number of instances of pod to be scheduled after which analysis stops. By default unlimited.")
 	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration.")
 	fs.BoolVar(&s.Verbose, "verbose", s.Verbose, "Verbose mode")
@@ -143,7 +143,7 @@ func (s *CapacityEstimationConfig) ParseAPISpec() error {
 			s.Pod = append(s.Pod, pod)
 		}
 	} else {
-		for _, nn := range s.Options.PodFromClusters {
+		for _, nn := range s.Options.PodsFromCluster {
 			pod, err := s.KubeClient.CoreV1().Pods(nn.Namespace).Get(context.TODO(), nn.Name, metav1.GetOptions{ResourceVersion: "0"})
 			if err != nil {
 				return err
