@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -94,6 +95,8 @@ type genericSimulator struct {
 	// TODO: follow kubernetes master branch code
 	dynInformerFactory dynamicinformer.DynamicSharedInformerFactory
 	restMapper         meta.RESTMapper
+	// real dynamic client to init the world
+	dynamicClient *dynamic.DynamicClient
 
 	// scheduler
 	scheduler           *scheduler.Scheduler
@@ -180,21 +183,9 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 		return nil, err
 	}
 
-	// black magic
-	initObjects := getInitObjects(restMapper, dynamicClient)
-	for _, unstructuredObj := range initObjects {
-		obj := initResources[unstructuredObj.GetObjectKind().GroupVersionKind()]()
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.(*unstructured.Unstructured).UnstructuredContent(), obj); err != nil {
-			return nil, err
-		}
-
-		if err := kubeSchedulerConfig.Client.(testing.FakeClient).Tracker().Add(obj); err != nil {
-			return nil, err
-		}
-	}
-
 	s := &genericSimulator{
 		fakeClient:          kubeSchedulerConfig.Client,
+		dynamicClient:       dynamicClient,
 		restMapper:          restMapper,
 		stopCh:              make(chan struct{}),
 		fakeInformerFactory: kubeSchedulerConfig.InformerFactory,
@@ -224,6 +215,36 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 	}
 
 	return s, nil
+}
+
+// InitTheWorld use objs outside or default init resources to initialize the scheduler
+// the objs outside must be typed object.
+func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
+	if len(objs) == 0 {
+		// black magic
+		initObjects := getInitObjects(s.restMapper, s.dynamicClient)
+		for _, unstructuredObj := range initObjects {
+			obj := initResources[unstructuredObj.GetObjectKind().GroupVersionKind()]()
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.(*unstructured.Unstructured).UnstructuredContent(), obj); err != nil {
+				return err
+			}
+
+			if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, obj := range objs {
+			if _, ok := obj.(runtime.Unstructured); ok {
+				return errors.New("type of objs used to init the world must not be unstructured")
+			}
+			if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *genericSimulator) UpdateStatus(pod *corev1.Pod) {

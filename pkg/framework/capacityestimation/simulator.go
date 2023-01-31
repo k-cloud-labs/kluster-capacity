@@ -93,6 +93,11 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 }
 
 func (s *simulator) Initialize() error {
+	err := s.Simulator.InitTheWorld()
+	if err != nil {
+		return err
+	}
+
 	// create first pod
 	return s.createNextPod()
 }
