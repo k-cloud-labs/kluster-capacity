@@ -39,9 +39,9 @@ and run the analysis:
 
 ```sh
 # use an specified pod yaml file as pod template
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> 
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod templates> 
 # use an existing pod from cluster as pod template
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-from-clusters <namespace/name key of the pod> 
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pods-from-cluster <namespace/name key of the pod> 
 ```
 For more information about available options run:
 
@@ -55,7 +55,7 @@ Assuming a cluster is running with 4 nodes and 1 master with each node with 2 CP
 With pod resource requirements to be `150m` of CPU and ``100Mi`` of Memory.
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> --verbose
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod templates> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -79,7 +79,7 @@ Once the number of running pods in the cluster grows and the analysis is run aga
 the number of schedulable pods decreases as well:
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> --verbose
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod templates> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -103,8 +103,8 @@ Pod distribution among nodes:
 `ce` command has a flag `--output (-o)` to format its output as json or yaml.
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> -o json
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod template> -o yaml
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod templates> -o json
+$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --pod-templates <path to pod templates> -o yaml
 ```
 
 The json or yaml output is not versioned and is not guaranteed to be stable across various releases.

@@ -45,7 +45,7 @@ func NewCapacityEstimationCmd() *cobra.Command {
 	opt := options.NewCapacityEstimationOptions()
 
 	var cmd = &cobra.Command{
-		Use:           "ce --kubeconfig KUBECONFIG --pod-template PODYAML or ce --kubeconfig KUBECONFIG --pod-from-cluster Namespace/Name",
+		Use:           "ce --kubeconfig KUBECONFIG --pod-templates PODYAML or ce --kubeconfig KUBECONFIG --pods-from-cluster Namespace/Name",
 		Short:         "ce is used for simulating scheduling of one or multiple pods",
 		Long:          capacityEstimationLong,
 		SilenceErrors: false,
@@ -73,11 +73,11 @@ func NewCapacityEstimationCmd() *cobra.Command {
 }
 
 func validate(opt *options.CapacityEstimationOptions) error {
-	if len(opt.PodTemplates) == 0 && len(opt.PodFromClusters) == 0 {
+	if len(opt.PodTemplates) == 0 && len(opt.PodsFromCluster) == 0 {
 		return errors.New("pod template file and pod from cluster both is missing")
 	}
 
-	if len(opt.PodTemplates) != 0 && len(opt.PodFromClusters) != 0 {
+	if len(opt.PodTemplates) != 0 && len(opt.PodsFromCluster) != 0 {
 		return errors.New("pod template file and pod from cluster is exclusive")
 	}
 
