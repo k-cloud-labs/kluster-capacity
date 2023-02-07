@@ -53,7 +53,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 	succeedPodMap := sync.Map{}
 	failedPodMap := sync.Map{}
 	count := 0
-	informerFactory.Core().V1().Pods().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = informerFactory.Core().V1().Pods().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if count == 0 {
 				pods, _ := informerFactory.Core().V1().Pods().Lister().Pods(metav1.NamespaceAll).List(labels.Everything())
