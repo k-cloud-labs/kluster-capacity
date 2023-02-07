@@ -6,15 +6,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ghodss/yaml"
 	"github.com/jedib0t/go-pretty/v6/table"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 type CapacityEstimationReview struct {
@@ -64,9 +63,9 @@ type Resources struct {
 }
 
 type Requirements struct {
-	PodName       string            `json:"podName"`
-	Resources     *Resources        `json:"resources"`
-	NodeSelectors map[string]string `json:"nodeSelectors"`
+	PodName       string              `json:"podName"`
+	Resources     *framework.Resource `json:"resources"`
+	NodeSelectors map[string]string   `json:"nodeSelectors"`
 }
 
 type CapacityEstimationReviewScheduleStopReason struct {
@@ -77,9 +76,9 @@ type CapacityEstimationReviewScheduleStopReason struct {
 func (r *CapacityEstimationReview) Print(verbose bool, format string) error {
 	switch format {
 	case "json":
-		return capacityEstimationReviewPrintJson(r)
+		return utils.PrintJson(r)
 	case "yaml":
-		return capacityEstimationReviewPrintYaml(r)
+		return utils.PrintYaml(r)
 	case "":
 		capacityEstimationReviewPrettyPrint(r, verbose)
 		return nil
@@ -97,12 +96,12 @@ func (r CapacityEstimationReviews) Print(verbose bool, format string) error {
 		}
 		switch format {
 		case "json":
-			err := capacityEstimationReviewPrintJson(review)
+			err := utils.PrintJson(review)
 			if err != nil {
 				return err
 			}
 		case "yaml":
-			err := capacityEstimationReviewPrintYaml(review)
+			err := utils.PrintYaml(review)
 			if err != nil {
 				return err
 			}
@@ -211,51 +210,12 @@ func getPodsRequirements(pods []*corev1.Pod) []*Requirements {
 	for _, pod := range pods {
 		podRequirements := &Requirements{
 			PodName:       pod.Name,
-			Resources:     getResourceRequest(pod),
+			Resources:     utils.ComputePodResourceRequest(pod),
 			NodeSelectors: pod.Spec.NodeSelector,
 		}
 		result = append(result, podRequirements)
 	}
 	return result
-}
-
-func getResourceRequest(pod *corev1.Pod) *Resources {
-	result := Resources{
-		PrimaryResources: corev1.ResourceList{
-			corev1.ResourceCPU:              *resource.NewMilliQuantity(0, resource.DecimalSI),
-			corev1.ResourceMemory:           *resource.NewQuantity(0, resource.BinarySI),
-			corev1.ResourceStorage:          *resource.NewQuantity(0, resource.BinarySI),
-			corev1.ResourceEphemeralStorage: *resource.NewQuantity(0, resource.BinarySI),
-		},
-	}
-
-	for _, container := range pod.Spec.Containers {
-		for rName, rQuantity := range container.Resources.Requests {
-			switch rName {
-			case corev1.ResourceMemory:
-				rQuantity.Add(*(result.PrimaryResources.Memory()))
-				result.PrimaryResources[corev1.ResourceMemory] = rQuantity
-			case corev1.ResourceCPU:
-				rQuantity.Add(*(result.PrimaryResources.Cpu()))
-				result.PrimaryResources[corev1.ResourceCPU] = rQuantity
-			case corev1.ResourceStorage:
-				rQuantity.Add(*(result.PrimaryResources.Storage()))
-				result.PrimaryResources[corev1.ResourceStorage] = rQuantity
-			case corev1.ResourceEphemeralStorage:
-				rQuantity.Add(*(result.PrimaryResources.StorageEphemeral()))
-				result.PrimaryResources[corev1.ResourceEphemeralStorage] = rQuantity
-			default:
-				if schedutil.IsScalarResourceName(rName) {
-					// Lazily allocate this map only if required.
-					if result.ScalarResources == nil {
-						result.ScalarResources = map[corev1.ResourceName]int64{}
-					}
-					result.ScalarResources[rName] += rQuantity.Value()
-				}
-			}
-		}
-	}
-	return &result
 }
 
 func instancesSum(replicasOnNodes []*ReplicasOnNode) int {
@@ -270,8 +230,8 @@ func capacityEstimationReviewPrettyPrint(r *CapacityEstimationReview, verbose bo
 	if verbose {
 		for _, req := range r.Spec.PodRequirements {
 			fmt.Printf("%v pod requirements:\n", req.PodName)
-			fmt.Printf("\t- CPU: %v\n", req.Resources.PrimaryResources.Cpu().String())
-			fmt.Printf("\t- Memory: %v\n", req.Resources.PrimaryResources.Memory().String())
+			fmt.Printf("\t- CPU(m): %v\n", req.Resources.MilliCPU)
+			fmt.Printf("\t- Memory(B): %v\n", req.Resources.Memory)
 			if req.Resources.ScalarResources != nil {
 				fmt.Printf("\t- ScalarResources: %v\n", req.Resources.ScalarResources)
 			}
@@ -313,22 +273,4 @@ func capacityEstimationReviewPrettyPrint(r *CapacityEstimationReview, verbose bo
 			}
 		}
 	}
-}
-
-func capacityEstimationReviewPrintJson(r *CapacityEstimationReview) error {
-	jsonBytes, err := json.Marshal(r)
-	if err != nil {
-		return fmt.Errorf("failed to create json: %v", err)
-	}
-	fmt.Println(string(jsonBytes))
-	return nil
-}
-
-func capacityEstimationReviewPrintYaml(r *CapacityEstimationReview) error {
-	yamlBytes, err := yaml.Marshal(r)
-	if err != nil {
-		return fmt.Errorf("failed to create yaml: %v", err)
-	}
-	fmt.Print(string(yamlBytes))
-	return nil
 }

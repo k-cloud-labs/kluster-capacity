@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package cmds
+package clustercompression
 
 import (
 	"errors"
@@ -21,18 +21,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ssCmd represents the ss command
-var ssCmd = &cobra.Command{
-	Use:   "ss",
-	Short: "scheduler simulation",
+// ccCmd represents the cc command
+var ccCmd = &cobra.Command{
+	Use:   "cc",
+	Short: "cluster compression",
 	// TODO: add detail usage info
-	Long:          `scheduler simulation`,
+	Long:          `cluster compression`,
 	SilenceErrors: false,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return errors.New("not implemented")
 	},
 }
 
-func NewSchedulerSimulationCmd() *cobra.Command {
-	return ssCmd
+func NewClusterCompressionCmd() *cobra.Command {
+	return ccCmd
 }

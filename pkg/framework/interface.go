@@ -15,7 +15,7 @@ type Simulator interface {
 	Run() error
 	InitTheWorld(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
-	UpdateStatus(pod *corev1.Pod)
+	UpdateStatus(pod ...*corev1.Pod)
 	Status() Status
 	Stop(reason string)
 }

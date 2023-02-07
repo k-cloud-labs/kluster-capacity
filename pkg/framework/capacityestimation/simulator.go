@@ -6,6 +6,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/informers"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
@@ -16,6 +17,10 @@ import (
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/capacityestimation"
 )
+
+type PodGenerator interface {
+	Generate() *corev1.Pod
+}
 
 // only support one scheduler for now and the scheduler name is "default-scheduler"
 type simulator struct {
@@ -37,6 +42,8 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 		maxSimulated: maxPods,
 	}
 
+	s.addEventHandlers(kubeSchedulerConfig.InformerFactory)
+
 	genericSimulator, err := pkgframework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
 		pkgframework.WithExcludeNodes(excludeNodes),
 		// add your custom plugins
@@ -49,35 +56,6 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 		// custom plugin configs of real scheduler is in your kubescheduler config file.
 		pkgframework.WithCustomPostBind(config.PluginSet{
 			Enabled: []config.Plugin{{Name: capacityestimation.Name}},
-		}),
-		// add your custom event handlers
-		pkgframework.WithCustomEventHandlers([]func(){
-			func() {
-				_, _ = kubeSchedulerConfig.InformerFactory.Core().V1().Pods().Informer().AddEventHandler(
-					cache.FilteringResourceEventHandler{
-						FilterFunc: func(obj interface{}) bool {
-							if pod, ok := obj.(*corev1.Pod); ok && pod.Spec.SchedulerName == pkgframework.SchedulerName &&
-								metav1.HasAnnotation(pod.ObjectMeta, pkgframework.PodProvisioner) {
-								return true
-							}
-							return false
-						},
-						Handler: cache.ResourceEventHandlerFuncs{
-							UpdateFunc: func(oldObj, newObj interface{}) {
-								if pod, ok := newObj.(*corev1.Pod); ok {
-									for _, podCondition := range pod.Status.Conditions {
-										// Only for pending pods provisioned by ce
-										if podCondition.Type == corev1.PodScheduled && podCondition.Status == corev1.ConditionFalse &&
-											podCondition.Reason == corev1.PodReasonUnschedulable {
-											s.Stop(fmt.Sprintf("%v: %v", podCondition.Reason, podCondition.Message))
-										}
-									}
-								}
-							},
-						},
-					},
-				)
-			},
 		}))
 	if err != nil {
 		return nil, err
@@ -122,4 +100,31 @@ func (s *simulator) createNextPod() error {
 	s.simulated++
 
 	return s.CreatePod(pod)
+}
+
+func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) {
+	_, _ = informerFactory.Core().V1().Pods().Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				if pod, ok := obj.(*corev1.Pod); ok && pod.Spec.SchedulerName == pkgframework.SchedulerName &&
+					metav1.HasAnnotation(pod.ObjectMeta, pkgframework.PodProvisioner) {
+					return true
+				}
+				return false
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					if pod, ok := newObj.(*corev1.Pod); ok {
+						for _, podCondition := range pod.Status.Conditions {
+							// Only for pending pods provisioned by ce
+							if podCondition.Type == corev1.PodScheduled && podCondition.Status == corev1.ConditionFalse &&
+								podCondition.Reason == corev1.PodReasonUnschedulable {
+								s.Stop(fmt.Sprintf("%v: %v", podCondition.Reason, podCondition.Message))
+							}
+						}
+					}
+				},
+			},
+		},
+	)
 }

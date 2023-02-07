@@ -13,13 +13,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package cmds
+package capacityestimation
 
 import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
@@ -28,7 +27,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	cliflag "k8s.io/component-base/cli/flag"
 
-	"github.com/k-cloud-labs/kluster-capacity/app/options"
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/capacityestimation"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
@@ -46,7 +45,7 @@ func NewCapacityEstimationCmd() *cobra.Command {
 
 	var cmd = &cobra.Command{
 		Use:           "ce --kubeconfig KUBECONFIG --pod-templates PODYAML or ce --kubeconfig KUBECONFIG --pods-from-cluster Namespace/Name",
-		Short:         "ce is used for simulating scheduling of one or multiple pods",
+		Short:         "ce is used to get the remaining capacity for specified pod",
 		Long:          capacityEstimationLong,
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -81,11 +80,8 @@ func validate(opt *options.CapacityEstimationOptions) error {
 		return errors.New("pod template file and pod from cluster is exclusive")
 	}
 
-	_, present := os.LookupEnv("KC_INCLUSTER")
-	if !present {
-		if len(opt.KubeConfig) == 0 {
-			return errors.New("kubeconfig is missing")
-		}
+	if len(opt.KubeConfig) == 0 {
+		return errors.New("kubeconfig is missing")
 	}
 
 	return nil
