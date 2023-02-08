@@ -2,7 +2,6 @@ package options
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,69 +12,29 @@ import (
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	clientset "k8s.io/client-go/kubernetes"
-	restclient "k8s.io/client-go/rest"
+
+	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 type CapacityEstimationOptions struct {
-	PodTemplates    string
-	PodsFromCluster NamespaceNames
-	SchedulerConfig string
-	OutputFormat    string
-	KubeConfig      string
-	MaxLimit        int
-	Verbose         bool
-	ExcludeNodes    []string
-}
-
-type NamespaceNames []*NamespaceName
-
-type NamespaceName struct {
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
-}
-
-func (n NamespaceNames) Set(nns string) error {
-	for _, nn := range strings.Split(nns, ",") {
-		nnStrs := strings.Split(nn, "/")
-		if len(nnStrs) == 1 {
-			n = append(n, &NamespaceName{
-				Namespace: metav1.NamespaceDefault,
-				Name:      nnStrs[0],
-			})
-		} else if len(nnStrs) == 2 {
-			n = append(n, &NamespaceName{
-				Namespace: nnStrs[0],
-				Name:      nnStrs[1],
-			})
-		} else {
-			return errors.New("invalid format")
-		}
-	}
-
-	return nil
-}
-
-func (n NamespaceNames) String() string {
-	strs := []string{}
-	for _, nn := range n {
-		strs = append(strs, fmt.Sprintf("%s/%s", nn.Namespace, nn.Name))
-	}
-
-	return strings.Join(strs, ",")
-}
-
-func (n NamespaceNames) Type() string {
-	return "namespaceNames"
+	PodsFromTemplate []string
+	PodsFromCluster  NamespaceNames
+	SchedulerConfig  string
+	OutputFormat     string
+	KubeConfig       string
+	MaxLimit         int
+	Verbose          bool
+	ExcludeNodes     []string
+	SaveTo           string
 }
 
 type CapacityEstimationConfig struct {
-	Pod        []*corev1.Pod
-	KubeClient clientset.Interface
-	// TODO: try to use fake dynamicInformerFactory
-	RestConfig *restclient.Config
-	Options    *CapacityEstimationOptions
+	Pods     []*corev1.Pod
+	InitObjs []runtime.Object
+	Options  *CapacityEstimationOptions
 }
 
 func NewCapacityEstimationConfig(opt *CapacityEstimationOptions) *CapacityEstimationConfig {
@@ -89,13 +48,13 @@ func NewCapacityEstimationOptions() *CapacityEstimationOptions {
 }
 
 func (s *CapacityEstimationOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&s.KubeConfig, "kubeconfig", s.KubeConfig, "Path to the kubeconfig file to use for the analysis.")
-	fs.StringVar(&s.PodTemplates, "pod-templates", s.PodTemplates, "Path to JSON or YAML file containing pod definition. Comma seperated and Exclusive with --pods-from-cluster")
-	fs.Var(&s.PodsFromCluster, "pods-from-cluster", "Namespace/Name of the pod from existing cluster. Comma seperated and Exclusive with --pod-templates")
-	fs.IntVar(&s.MaxLimit, "max-limit", 0, "Number of instances of pod to be scheduled after which analysis stops. By default unlimited.")
-	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration.")
+	fs.StringVar(&s.KubeConfig, "kubeconfig", s.KubeConfig, "Path to the kubeconfig file to use for the analysis")
+	fs.StringSliceVar(&s.PodsFromTemplate, "pods-from-template", s.PodsFromTemplate, "Path to JSON or YAML file containing pod definition. Comma seperated and Exclusive with --pods-from-cluster")
+	fs.Var(&s.PodsFromCluster, "pods-from-cluster", "Namespace/Name of the pod from existing cluster. Comma seperated and Exclusive with --pods-from-template")
+	fs.IntVar(&s.MaxLimit, "max-limit", 0, "Number of instances of pod to be scheduled after which analysis stops. By default unlimited")
+	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration")
 	fs.BoolVar(&s.Verbose, "verbose", s.Verbose, "Verbose mode")
-	fs.StringVarP(&s.OutputFormat, "output", "o", s.OutputFormat, "Output format. One of: json|yaml (Note: output is not versioned or guaranteed to be stable across releases).")
+	fs.StringVarP(&s.OutputFormat, "output", "o", s.OutputFormat, "Output format. One of: json|yaml (Note: output is not versioned or guaranteed to be stable across releases)")
 	fs.StringSliceVar(&s.ExcludeNodes, "exclude-nodes", s.ExcludeNodes, "Exclude nodes to be scheduled")
 }
 
@@ -134,21 +93,31 @@ func (s *CapacityEstimationConfig) ParseAPISpec() error {
 		return versionedPod, nil
 	}
 
-	if len(s.Options.PodTemplates) != 0 {
-		for _, template := range strings.Split(s.Options.PodTemplates, ",") {
+	if len(s.Options.PodsFromTemplate) != 0 {
+		for _, template := range s.Options.PodsFromTemplate {
 			pod, err := getPodFromTemplate(template)
 			if err != nil {
 				return err
 			}
-			s.Pod = append(s.Pod, pod)
+			s.Pods = append(s.Pods, pod)
 		}
 	} else {
+		cfg, err := utils.BuildRestConfig(s.Options.KubeConfig)
+		if err != nil {
+			return err
+		}
+
+		kubeClient, err := clientset.NewForConfig(cfg)
+		if err != nil {
+			return err
+		}
+
 		for _, nn := range s.Options.PodsFromCluster {
-			pod, err := s.KubeClient.CoreV1().Pods(nn.Namespace).Get(context.TODO(), nn.Name, metav1.GetOptions{ResourceVersion: "0"})
+			pod, err := kubeClient.CoreV1().Pods(nn.Namespace).Get(context.TODO(), nn.Name, metav1.GetOptions{ResourceVersion: "0"})
 			if err != nil {
 				return err
 			}
-			s.Pod = append(s.Pod, pod)
+			s.Pods = append(s.Pods, pod)
 		}
 	}
 

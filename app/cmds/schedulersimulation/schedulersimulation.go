@@ -22,13 +22,11 @@ import (
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
-	clientset "k8s.io/client-go/kubernetes"
 	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/schedulersimulation/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/schedulersimulation"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 var schedulerSimulationLong = dedent.Dedent(`
@@ -84,25 +82,16 @@ func validate(opt *options.SchedulerSimulationOptions) error {
 func run(opt *options.SchedulerSimulationOptions) error {
 	conf := options.NewSchedulerSimulationConfig(opt)
 
-	if opt.SourceFrom == options.FromCluster {
-		cfg, err := utils.BuildRestConfig(conf.Options.KubeConfig)
-		if err != nil {
-			return err
-		}
-
-		conf.KubeClient, err = clientset.NewForConfig(cfg)
-		if err != nil {
-			return err
-		}
-		conf.RestConfig = cfg
-	}
+	// TODO: init simulator from snapshot
+	//if opt.SourceFrom == options.FromSnapshot {
+	//}
 
 	reports, err := runSimulator(conf)
 	if err != nil {
 		return err
 	}
 
-	if err := reports.Print(conf.Options.Verbose, conf.Options.OutputFormat); err != nil {
+	if err := reports.Print(opt.Verbose, opt.OutputFormat); err != nil {
 		return fmt.Errorf("error while printing: %v", err)
 	}
 
@@ -110,16 +99,12 @@ func run(opt *options.SchedulerSimulationOptions) error {
 }
 
 func runSimulator(conf *options.SchedulerSimulationConfig) (framework.Printer, error) {
-	cc, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig)
-	if err != nil {
-		return nil, err
-	}
-	s, err := schedulersimulation.NewSSSimulatorExecutor(cc, conf.RestConfig, conf.Options.ExitCondition, conf.Options.ExcludeNodes)
+	s, err := schedulersimulation.NewSSSimulatorExecutor(conf.Options.SchedulerConfig, conf.Options.KubeConfig, conf.Options.ExitCondition, conf.Options.SaveTo, conf.Options.ExcludeNodes)
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.Initialize()
+	err = s.Initialize(conf.InitObjs...)
 	if err != nil {
 		return nil, err
 	}

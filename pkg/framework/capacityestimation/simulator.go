@@ -7,15 +7,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/capacityestimation"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 type PodGenerator interface {
@@ -34,7 +33,17 @@ type simulator struct {
 
 // NewCESimulatorExecutor create a ce simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
-func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, kubeConfig *restclient.Config, simulatedPod *corev1.Pod, maxPods int, excludeNodes []string) (pkgframework.SimulatorExecutor, error) {
+func NewCESimulatorExecutor(simulatedPod *corev1.Pod, schedulerCfg string, kubeCfg string, maxPods int, excludeNodes []string) (pkgframework.SimulatorExecutor, error) {
+	kubeSchedulerConfig, err := utils.BuildKubeSchedulerCompletedConfig(schedulerCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	kubeConfig, err := utils.BuildRestConfig(kubeCfg)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &simulator{
 		podGenerator: NewSinglePodGenerator(simulatedPod),
 		simulatedPod: simulatedPod,
@@ -42,7 +51,10 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 		maxSimulated: maxPods,
 	}
 
-	s.addEventHandlers(kubeSchedulerConfig.InformerFactory)
+	err = s.addEventHandlers(kubeSchedulerConfig.InformerFactory)
+	if err != nil {
+		return nil, err
+	}
 
 	genericSimulator, err := pkgframework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
 		pkgframework.WithExcludeNodes(excludeNodes),
@@ -66,8 +78,8 @@ func NewCESimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 	return s, nil
 }
 
-func (s *simulator) Initialize() error {
-	err := s.Simulator.InitTheWorld()
+func (s *simulator) Initialize(objs ...runtime.Object) error {
+	err := s.Simulator.InitTheWorld(objs...)
 	if err != nil {
 		return err
 	}
@@ -84,8 +96,7 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 	s.Simulator.UpdateStatus(bindPod)
 
 	if s.maxSimulated > 0 && s.simulated >= s.maxSimulated {
-		s.Simulator.Stop(fmt.Sprintf("LimitReached: Maximum number of pods simulated: %v", s.maxSimulated))
-		return nil
+		return s.Simulator.Stop(fmt.Sprintf("LimitReached: Maximum number of pods simulated: %v", s.maxSimulated))
 	}
 
 	if err := s.createNextPod(); err != nil {
@@ -102,7 +113,7 @@ func (s *simulator) createNextPod() error {
 	return s.CreatePod(pod)
 }
 
-func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) {
+func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) (err error) {
 	_, _ = informerFactory.Core().V1().Pods().Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -119,7 +130,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 							// Only for pending pods provisioned by ce
 							if podCondition.Type == corev1.PodScheduled && podCondition.Status == corev1.ConditionFalse &&
 								podCondition.Reason == corev1.PodReasonUnschedulable {
-								s.Stop(fmt.Sprintf("%v: %v", podCondition.Reason, podCondition.Message))
+								err = s.Stop(fmt.Sprintf("%v: %v", podCondition.Reason, podCondition.Message))
 							}
 						}
 					}
@@ -127,4 +138,6 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 			},
 		},
 	)
+
+	return
 }

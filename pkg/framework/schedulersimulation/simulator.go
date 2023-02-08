@@ -7,26 +7,38 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/schedulersimulation/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 type simulator struct {
 	framework.Simulator
 
 	exitCondition string
+	saveTo        string
 }
 
-func NewSSSimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, kubeConfig *restclient.Config, exitCondition string, excludeNodes []string) (framework.SimulatorExecutor, error) {
+func NewSSSimulatorExecutor(schedulerCfg string, kubeCfg string, exitCondition string, saveTo string, excludeNodes []string) (framework.SimulatorExecutor, error) {
+	kubeSchedulerConfig, err := utils.BuildKubeSchedulerCompletedConfig(schedulerCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	kubeConfig, err := utils.BuildRestConfig(kubeCfg)
+	if err != nil {
+		return nil, err
+	}
+
 	scheduler, err := framework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
 		framework.WithNodeImages(false),
 		framework.WithScheduledPods(false),
-		framework.WithExcludeNodes(excludeNodes))
+		framework.WithExcludeNodes(excludeNodes),
+		framework.WithSaveTo(saveTo))
 	if err != nil {
 		return nil, err
 	}
@@ -34,22 +46,26 @@ func NewSSSimulatorExecutor(kubeSchedulerConfig *schedconfig.CompletedConfig, ku
 	s := &simulator{
 		Simulator:     scheduler,
 		exitCondition: exitCondition,
+		saveTo:        saveTo,
 	}
 
-	s.addEventHandlers(kubeSchedulerConfig.InformerFactory)
+	err = s.addEventHandlers(kubeSchedulerConfig.InformerFactory)
+	if err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }
 
-func (s *simulator) Initialize() error {
-	return s.InitTheWorld()
+func (s *simulator) Initialize(objs ...runtime.Object) error {
+	return s.InitTheWorld(objs...)
 }
 
 func (s *simulator) Report() framework.Printer {
 	return generateReport(s.Status())
 }
 
-func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) {
+func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) (err error) {
 	succeedPodMap := sync.Map{}
 	failedPodMap := sync.Map{}
 	count := 0
@@ -97,17 +113,19 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 
 			if s.exitCondition == options.ExitWhenAllScheduled && succeedCount+failedCount == count {
 				stop = true
-				reason = "AllScheduled: %s pod(s) have been scheduled once."
+				reason = "AllScheduled: %d pod(s) have been scheduled once."
 			} else if s.exitCondition == options.ExitWhenAllSucceed && succeedCount == count {
 				stop = true
-				reason = "AllSucceed: %s pod(s) have been scheduled successfully."
+				reason = "AllSucceed: %d pod(s) have been scheduled successfully."
 			}
 
 			if stop {
 				pods := allPods()
 				s.UpdateStatus(pods...)
-				s.Stop(fmt.Sprintf(reason, len(pods)))
+				err = s.Stop(fmt.Sprintf(reason, len(pods)))
 			}
 		},
 	})
+
+	return
 }

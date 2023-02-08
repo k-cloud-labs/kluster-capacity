@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -122,6 +123,8 @@ type genericSimulator struct {
 
 	// final status
 	status Status
+	// save status to this file if specified
+	saveTo string
 }
 
 type Option func(*genericSimulator)
@@ -177,6 +180,12 @@ func WithScheduledPods(with bool) Option {
 func WithIgnorePodsOnExcludesNode(with bool) Option {
 	return func(s *genericSimulator) {
 		s.ignorePodsOnExcludesNode = with
+	}
+}
+
+func WithSaveTo(to string) Option {
+	return func(s *genericSimulator) {
+		s.saveTo = to
 	}
 }
 
@@ -283,7 +292,7 @@ func (s *genericSimulator) Status() Status {
 	return s.status
 }
 
-func (s *genericSimulator) Stop(reason string) {
+func (s *genericSimulator) Stop(reason string) error {
 	nodeMap := make(map[string]corev1.Node)
 	nodeList, _ := s.fakeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
 	for _, node := range nodeList.Items {
@@ -291,19 +300,40 @@ func (s *genericSimulator) Stop(reason string) {
 	}
 
 	s.stopMux.Lock()
-	defer s.stopMux.Unlock()
+	defer func() {
+		close(s.stopCh)
+		close(s.informerCh)
+		close(s.schedulerCh)
+		s.stopMux.Unlock()
+	}()
 
 	if s.stopped {
-		return
+		return nil
+	}
+
+	if len(s.saveTo) > 0 {
+		file, err := os.OpenFile(s.saveTo, os.O_CREATE|os.O_RDWR, 0755)
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+
+		bytes, err := json.Marshal(s.status)
+		if err != nil {
+			return err
+		}
+
+		_, err = file.Write(bytes)
+		if err != nil {
+			return err
+		}
 	}
 
 	s.status.StopReason = reason
 	s.status.Nodes = nodeMap
-
 	s.stopped = true
-	close(s.stopCh)
-	close(s.informerCh)
-	close(s.schedulerCh)
+
+	return nil
 }
 
 func (s *genericSimulator) CreatePod(pod *corev1.Pod) error {

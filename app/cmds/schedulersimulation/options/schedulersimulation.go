@@ -3,8 +3,6 @@ package options
 import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
-	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 const (
@@ -31,7 +29,7 @@ type SchedulerSimulationOptions struct {
 	OutputFormat    string
 	Verbose         bool
 	SaveTo          string
-	// Empty, Cluster, Snapshot
+	// Cluster, Snapshot
 	SourceFrom               string
 	ExitCondition            string
 	ExcludeNodes             []string
@@ -39,11 +37,8 @@ type SchedulerSimulationOptions struct {
 }
 
 type SchedulerSimulationConfig struct {
-	Options    *SchedulerSimulationOptions
-	RestConfig *rest.Config
-	KubeClient clientset.Interface
-	// only used when Type of Options is Empty
-	Resources []runtime.Object
+	Options  *SchedulerSimulationOptions
+	InitObjs []runtime.Object
 }
 
 func NewSchedulerSimulationOptions() *SchedulerSimulationOptions {
@@ -57,14 +52,14 @@ func NewSchedulerSimulationConfig(option *SchedulerSimulationOptions) *Scheduler
 }
 
 func (s *SchedulerSimulationOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&s.KubeConfig, "kubeconfig", s.KubeConfig, "Path to the kubeconfig file to use for the analysis.")
-	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration. Used when source-from is cluster.")
-	fs.StringVarP(&s.OutputFormat, "output", "o", s.OutputFormat, "Output format. One of: json|yaml.")
+	fs.StringVar(&s.KubeConfig, "kubeconfig", s.KubeConfig, "Path to the kubeconfig file to use for the analysis")
+	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration. Used when source-from is cluster")
+	fs.StringVarP(&s.OutputFormat, "output", "o", s.OutputFormat, "Output format. One of: json|yaml")
 	fs.StringSliceVar(&s.ExcludeNodes, "exclude-nodes", s.ExcludeNodes, "Exclude nodes to be scheduled")
 	fs.BoolVarP(&s.IgnorePodsOnExcludeNodes, "ignore-pods-on-excludes-nodes", "i", true, "Whether ignore the pods on the excludes nodes. By default true")
-	fs.StringVar(&s.Snapshot, "snapshot", s.Snapshot, "Path of snapshot to initialize the world. Used when source-from is snapshot.")
-	fs.StringVar(&s.SourceFrom, "source-from", "Cluster", "Source of the init data. One of: Cluster|Snapshot.")
-	fs.StringVar(&s.ExitCondition, "exit-condition", "AllSucceed", "Exit condition of the simulator. One of: AllScheduled|AllSucceed.")
+	fs.StringVar(&s.Snapshot, "snapshot", s.Snapshot, "Path of snapshot to initialize the world. Used when source-from is snapshot")
+	fs.StringVar(&s.SourceFrom, "source-from", "Cluster", "Source of the init data. One of: Cluster|Snapshot")
+	fs.StringVar(&s.ExitCondition, "exit-condition", "AllSucceed", "Exit condition of the simulator. One of: AllScheduled|AllSucceed")
 	fs.BoolVar(&s.Verbose, "verbose", s.Verbose, "Verbose mode")
-	fs.StringVarP(&s.SaveTo, "save", "s", s.SaveTo, "File path to save the scheduling cache snapshot.")
+	fs.StringVarP(&s.SaveTo, "save", "s", s.SaveTo, "File path to save the simulation result")
 }
