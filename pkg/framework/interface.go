@@ -15,14 +15,14 @@ type Simulator interface {
 	Run() error
 	InitTheWorld(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
-	UpdateStatus(pod *corev1.Pod)
+	UpdateStatus(pod ...*corev1.Pod)
 	Status() Status
-	Stop(reason string)
+	Stop(reason string) error
 }
 
 type SimulatorExecutor interface {
 	Run() error
-	Initialize() error
+	Initialize(objs ...runtime.Object) error
 	Report() Printer
 }
 

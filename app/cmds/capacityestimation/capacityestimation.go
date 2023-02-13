@@ -13,25 +13,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package cmds
+package capacityestimation
 
 import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
-	clientset "k8s.io/client-go/kubernetes"
 	cliflag "k8s.io/component-base/cli/flag"
 
-	"github.com/k-cloud-labs/kluster-capacity/app/options"
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/capacityestimation"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 var capacityEstimationLong = dedent.Dedent(`
@@ -45,8 +42,8 @@ func NewCapacityEstimationCmd() *cobra.Command {
 	opt := options.NewCapacityEstimationOptions()
 
 	var cmd = &cobra.Command{
-		Use:           "ce --kubeconfig KUBECONFIG --pod-templates PODYAML or ce --kubeconfig KUBECONFIG --pods-from-cluster Namespace/Name",
-		Short:         "ce is used for simulating scheduling of one or multiple pods",
+		Use:           "ce --kubeconfig KUBECONFIG --pods-from-templates PODYAML | --pods-from-cluster Namespace/Name",
+		Short:         "ce is used to get the remaining capacity for specified pod",
 		Long:          capacityEstimationLong,
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -73,19 +70,16 @@ func NewCapacityEstimationCmd() *cobra.Command {
 }
 
 func validate(opt *options.CapacityEstimationOptions) error {
-	if len(opt.PodTemplates) == 0 && len(opt.PodsFromCluster) == 0 {
+	if len(opt.PodsFromTemplate) == 0 && len(opt.PodsFromCluster) == 0 {
 		return errors.New("pod template file and pod from cluster both is missing")
 	}
 
-	if len(opt.PodTemplates) != 0 && len(opt.PodsFromCluster) != 0 {
+	if len(opt.PodsFromTemplate) != 0 && len(opt.PodsFromCluster) != 0 {
 		return errors.New("pod template file and pod from cluster is exclusive")
 	}
 
-	_, present := os.LookupEnv("KC_INCLUSTER")
-	if !present {
-		if len(opt.KubeConfig) == 0 {
-			return errors.New("kubeconfig is missing")
-		}
+	if len(opt.KubeConfig) == 0 {
+		return errors.New("kubeconfig is missing")
 	}
 
 	return nil
@@ -94,18 +88,7 @@ func validate(opt *options.CapacityEstimationOptions) error {
 func run(opt *options.CapacityEstimationOptions) error {
 	conf := options.NewCapacityEstimationConfig(opt)
 
-	cfg, err := utils.BuildRestConfig(conf.Options.KubeConfig)
-	if err != nil {
-		return err
-	}
-
-	conf.KubeClient, err = clientset.NewForConfig(cfg)
-	if err != nil {
-		return err
-	}
-	conf.RestConfig = cfg
-
-	err = conf.ParseAPISpec()
+	err := conf.ParseAPISpec()
 	if err != nil {
 		return fmt.Errorf("failed to parse pod spec file: %v ", err)
 	}
@@ -124,16 +107,16 @@ func run(opt *options.CapacityEstimationOptions) error {
 
 func runSimulator(conf *options.CapacityEstimationConfig) (framework.Printer, error) {
 	run := func(podTemplate *corev1.Pod) (framework.Printer, error) {
-		cc, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig)
-		if err != nil {
-			return nil, err
-		}
-		s, err := capacityestimation.NewCESimulatorExecutor(cc, conf.RestConfig, podTemplate, conf.Options.MaxLimit, conf.Options.ExcludeNodes)
+		s, err := capacityestimation.NewCESimulatorExecutor(podTemplate,
+			conf.Options.SchedulerConfig,
+			conf.Options.KubeConfig,
+			conf.Options.MaxLimit,
+			conf.Options.ExcludeNodes)
 		if err != nil {
 			return nil, err
 		}
 
-		err = s.Initialize()
+		err = s.Initialize(conf.InitObjs...)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +131,7 @@ func runSimulator(conf *options.CapacityEstimationConfig) (framework.Printer, er
 
 	reports := capacityestimation.CapacityEstimationReviews{}
 	g := errgroup.Group{}
-	for _, pod := range conf.Pod {
+	for _, pod := range conf.Pods {
 		copy := pod.DeepCopy()
 		g.Go(func() error {
 			report, err := run(copy)

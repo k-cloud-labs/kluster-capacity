@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
+	"github.com/ghodss/yaml"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
@@ -17,6 +20,7 @@ import (
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	kubeschedulerscheme "k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 )
@@ -63,6 +67,43 @@ func BuildKubeSchedulerCompletedConfig(config string) (*schedconfig.CompletedCon
 	}
 
 	return cc, nil
+}
+
+func PrintJson(r pkgframework.Printer) error {
+	jsonBytes, err := json.Marshal(r)
+	if err != nil {
+		return fmt.Errorf("failed to create json: %v", err)
+	}
+	fmt.Println(string(jsonBytes))
+	return nil
+}
+
+func PrintYaml(r pkgframework.Printer) error {
+	yamlBytes, err := yaml.Marshal(r)
+	if err != nil {
+		return fmt.Errorf("failed to create yaml: %v", err)
+	}
+	fmt.Print(string(yamlBytes))
+	return nil
+}
+
+func ComputePodResourceRequest(pod *corev1.Pod) *framework.Resource {
+	result := &framework.Resource{}
+
+	for _, container := range pod.Spec.Containers {
+		result.Add(container.Resources.Requests)
+	}
+
+	// take max_resource(sum_pod, any_init_container)
+	for _, container := range pod.Spec.InitContainers {
+		result.SetMaxResource(container.Resources.Requests)
+	}
+
+	// If Overhead is being utilized, add to the total requests for the pod
+	if pod.Spec.Overhead != nil {
+		result.Add(pod.Spec.Overhead)
+	}
+	return result
 }
 
 func buildKubeSchedulerCompletedConfig(kcfg *kubeschedulerconfig.KubeSchedulerConfiguration) (*schedconfig.CompletedConfig, error) {

@@ -11,10 +11,6 @@ import (
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 )
 
-type PodGenerator interface {
-	Generate() *corev1.Pod
-}
-
 type singlePodGenerator struct {
 	counter     uint
 	podTemplate *corev1.Pod

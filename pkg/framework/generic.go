@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -84,7 +85,7 @@ var (
 // Status capture all scheduled pods with reason why the estimation could not continue
 type Status struct {
 	Pods       []*corev1.Pod
-	Resource   string
+	Nodes      map[string]corev1.Node
 	StopReason string
 }
 
@@ -100,13 +101,16 @@ type genericSimulator struct {
 	dynamicClient *dynamic.DynamicClient
 
 	// scheduler
-	scheduler           *scheduler.Scheduler
-	excludeNodes        sets.Set[string]
-	outOfTreeRegistry   frameworkruntime.Registry
-	customBind          kubeschedulerconfig.PluginSet
-	customPreBind       kubeschedulerconfig.PluginSet
-	customPostBind      kubeschedulerconfig.PluginSet
-	customEventHandlers []func()
+	scheduler                *scheduler.Scheduler
+	excludeNodes             sets.Set[string]
+	withScheduledPods        bool
+	withNodeImages           bool
+	ignorePodsOnExcludesNode bool
+	outOfTreeRegistry        frameworkruntime.Registry
+	customBind               kubeschedulerconfig.PluginSet
+	customPreBind            kubeschedulerconfig.PluginSet
+	customPostBind           kubeschedulerconfig.PluginSet
+	customEventHandlers      []func()
 
 	// for scheduler and informer
 	informerCh  chan struct{}
@@ -119,6 +123,8 @@ type genericSimulator struct {
 
 	// final status
 	status Status
+	// save status to this file if specified
+	saveTo string
 }
 
 type Option func(*genericSimulator)
@@ -159,6 +165,30 @@ func WithCustomEventHandlers(handlers []func()) Option {
 	}
 }
 
+func WithNodeImages(with bool) Option {
+	return func(s *genericSimulator) {
+		s.withNodeImages = with
+	}
+}
+
+func WithScheduledPods(with bool) Option {
+	return func(s *genericSimulator) {
+		s.withScheduledPods = with
+	}
+}
+
+func WithIgnorePodsOnExcludesNode(with bool) Option {
+	return func(s *genericSimulator) {
+		s.ignorePodsOnExcludesNode = with
+	}
+}
+
+func WithSaveTo(to string) Option {
+	return func(s *genericSimulator) {
+		s.saveTo = to
+	}
+}
+
 // NewGenericSimulator create a generic simulator for ce, cc, ss simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
 func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (Simulator, error) {
@@ -185,13 +215,16 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 	}
 
 	s := &genericSimulator{
-		fakeClient:          kubeSchedulerConfig.Client,
-		dynamicClient:       dynamicClient,
-		restMapper:          restMapper,
-		stopCh:              make(chan struct{}),
-		fakeInformerFactory: kubeSchedulerConfig.InformerFactory,
-		informerCh:          make(chan struct{}),
-		schedulerCh:         make(chan struct{}),
+		fakeClient:               kubeSchedulerConfig.Client,
+		dynamicClient:            dynamicClient,
+		restMapper:               restMapper,
+		stopCh:                   make(chan struct{}),
+		fakeInformerFactory:      kubeSchedulerConfig.InformerFactory,
+		informerCh:               make(chan struct{}),
+		schedulerCh:              make(chan struct{}),
+		withScheduledPods:        true,
+		ignorePodsOnExcludesNode: false,
+		withNodeImages:           true,
 	}
 	for _, option := range options {
 		option(s)
@@ -229,9 +262,10 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.(*unstructured.Unstructured).UnstructuredContent(), obj); err != nil {
 				return err
 			}
-
-			if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
-				return err
+			if needAdd, obj := s.preAdd(obj); needAdd {
+				if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
+					return err
+				}
 			}
 		}
 	} else {
@@ -239,8 +273,10 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 			if _, ok := obj.(runtime.Unstructured); ok {
 				return errors.New("type of objs used to init the world must not be unstructured")
 			}
-			if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
-				return err
+			if needAdd, obj := s.preAdd(obj); needAdd {
+				if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -248,27 +284,56 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 	return nil
 }
 
-func (s *genericSimulator) UpdateStatus(pod *corev1.Pod) {
-	s.status.Pods = append(s.status.Pods, pod)
+func (s *genericSimulator) UpdateStatus(pod ...*corev1.Pod) {
+	s.status.Pods = append(s.status.Pods, pod...)
 }
 
 func (s *genericSimulator) Status() Status {
 	return s.status
 }
 
-func (s *genericSimulator) Stop(reason string) {
+func (s *genericSimulator) Stop(reason string) error {
+	nodeMap := make(map[string]corev1.Node)
+	nodeList, _ := s.fakeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
+	for _, node := range nodeList.Items {
+		nodeMap[node.Name] = node
+	}
+
 	s.stopMux.Lock()
-	defer s.stopMux.Unlock()
+	defer func() {
+		close(s.stopCh)
+		close(s.informerCh)
+		close(s.schedulerCh)
+		s.stopMux.Unlock()
+	}()
 
 	if s.stopped {
-		return
+		return nil
+	}
+
+	if len(s.saveTo) > 0 {
+		file, err := os.OpenFile(s.saveTo, os.O_CREATE|os.O_RDWR, 0755)
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+
+		bytes, err := json.Marshal(s.status)
+		if err != nil {
+			return err
+		}
+
+		_, err = file.Write(bytes)
+		if err != nil {
+			return err
+		}
 	}
 
 	s.status.StopReason = reason
+	s.status.Nodes = nodeMap
 	s.stopped = true
-	close(s.stopCh)
-	close(s.informerCh)
-	close(s.schedulerCh)
+
+	return nil
 }
 
 func (s *genericSimulator) CreatePod(pod *corev1.Pod) error {
@@ -336,6 +401,47 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 		scheduler.WithExtenders(cc.ComponentConfig.Extenders...),
 		scheduler.WithParallelism(cc.ComponentConfig.Parallelism),
 	)
+}
+
+func (s *genericSimulator) preAdd(obj runtime.Object) (bool, runtime.Object) {
+	// filter exclude nodes and pods and update pod, node spec and status property
+	if pod, ok := obj.(*corev1.Pod); ok {
+		// ignore ds pods on exclude nodes
+		if s.excludeNodes != nil {
+			if _, ok := s.excludeNodes[pod.Spec.NodeName]; ok {
+				if s.ignorePodsOnExcludesNode || pod.OwnerReferences != nil && pod.OwnerReferences[0].Kind == "DaemonSet" {
+					return false, nil
+				}
+			}
+		}
+
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			return false, nil
+		}
+		if !s.withScheduledPods {
+			pod.Spec.SchedulerName = SchedulerName
+			if pod.Annotations == nil {
+				pod.Annotations = make(map[string]string)
+			}
+			pod.Annotations[PodProvisioner] = SchedulerName
+			pod.Spec.NodeName = ""
+			pod.Status.Phase = corev1.PodPending
+			pod.Status.Conditions = nil
+			pod.Status.Reason = ""
+
+			return true, pod
+		}
+	} else if node, ok := obj.(*corev1.Node); ok && s.excludeNodes != nil {
+		if _, ok := s.excludeNodes[node.Name]; ok {
+			return false, nil
+		} else if !s.withNodeImages {
+			node.Status.Images = nil
+
+			return true, node
+		}
+	}
+
+	return true, obj
 }
 
 func newPodInformer(cs clientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {

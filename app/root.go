@@ -22,7 +22,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/k-cloud-labs/kluster-capacity/app/cmds"
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation"
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression"
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds/schedulersimulation"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/version/sharedcommand"
 )
 
@@ -60,7 +62,7 @@ func init() {
 	// when this action is called directly.
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-	rootCmd.AddCommand(cmds.NewCapacityEstimationCmd(), cmds.NewSchedulerSimulationCmd(), cmds.NewClusterCompressionCmd())
+	rootCmd.AddCommand(capacityestimation.NewCapacityEstimationCmd(), schedulersimulation.NewSchedulerSimulationCmd(), clustercompression.NewClusterCompressionCmd())
 	rootCmd.AddCommand(sharedcommand.NewCmdVersion(os.Stdout, "kluster-capacity"))
 }
 
