@@ -8,12 +8,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/kubernetes/pkg/scheduler/apis/config"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
-	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/capacityestimation"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
@@ -58,17 +54,7 @@ func NewCESimulatorExecutor(simulatedPod *corev1.Pod, schedulerCfg string, kubeC
 
 	genericSimulator, err := pkgframework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
 		pkgframework.WithExcludeNodes(excludeNodes),
-		// add your custom plugins
-		pkgframework.WithOutOfTreeRegistry(frameworkruntime.Registry{
-			capacityestimation.Name: func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
-				return capacityestimation.New(s.postBindHook)
-			},
-		}),
-		// plugin configs added here is only for simulator logic.
-		// custom plugin configs of real scheduler is in your kubescheduler config file.
-		pkgframework.WithCustomPostBind(config.PluginSet{
-			Enabled: []config.Plugin{{Name: capacityestimation.Name}},
-		}))
+		pkgframework.WithPostBindHook(s.postBindHook))
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +65,7 @@ func NewCESimulatorExecutor(simulatedPod *corev1.Pod, schedulerCfg string, kubeC
 }
 
 func (s *simulator) Initialize(objs ...runtime.Object) error {
-	err := s.Simulator.InitTheWorld(objs...)
+	err := s.InitTheWorld(objs...)
 	if err != nil {
 		return err
 	}
@@ -93,10 +79,13 @@ func (s *simulator) Report() pkgframework.Printer {
 }
 
 func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
-	s.Simulator.UpdateStatus(bindPod)
+	if !metav1.HasAnnotation(bindPod.ObjectMeta, pkgframework.PodProvisioner) {
+		return nil
+	}
+	s.UpdateStatus(bindPod)
 
 	if s.maxSimulated > 0 && s.simulated >= s.maxSimulated {
-		return s.Simulator.Stop(fmt.Sprintf("LimitReached: Maximum number of pods simulated: %v", s.maxSimulated))
+		return s.Stop(fmt.Sprintf("LimitReached: Maximum number of pods simulated: %v", s.maxSimulated))
 	}
 
 	if err := s.createNextPod(); err != nil {
