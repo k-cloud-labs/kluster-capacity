@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultpreemption"
 	"os"
 	"sync"
 	"time"
@@ -84,9 +85,10 @@ var (
 
 // Status capture all scheduled pods with reason why the estimation could not continue
 type Status struct {
-	Pods       []*corev1.Pod
-	Nodes      map[string]corev1.Node
-	StopReason string
+	Pods         []*corev1.Pod
+	NodeNameList []string
+	Nodes        map[string]corev1.Node
+	StopReason   string
 }
 
 type genericSimulator struct {
@@ -284,8 +286,16 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 	return nil
 }
 
+func (s *genericSimulator) GetClient() clientset.Interface {
+	return s.fakeClient
+}
+
 func (s *genericSimulator) UpdateStatus(pod ...*corev1.Pod) {
 	s.status.Pods = append(s.status.Pods, pod...)
+}
+
+func (s *genericSimulator) UpdateStatusNode(nodeName string) {
+	s.status.NodeNameList = append(s.status.NodeNameList, nodeName)
 }
 
 func (s *genericSimulator) Status() Status {
@@ -375,6 +385,7 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = []kubeschedulerconfig.Plugin{{Name: volumebinding.Name}}
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = []kubeschedulerconfig.Plugin{{Name: defaultbinder.Name}}
+	cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled = []kubeschedulerconfig.Plugin{{Name: defaultpreemption.Name}}
 
 	// custom bind plugin
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, s.customPreBind.Enabled...)

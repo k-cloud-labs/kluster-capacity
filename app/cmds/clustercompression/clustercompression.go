@@ -17,22 +17,116 @@ package clustercompression
 
 import (
 	"errors"
+	"flag"
+	"fmt"
+	"os"
 
+	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
+	clientset "k8s.io/client-go/kubernetes"
+	cliflag "k8s.io/component-base/cli/flag"
+	"k8s.io/klog/v2"
+
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression/options"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/clustercompression"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
-// ccCmd represents the cc command
-var ccCmd = &cobra.Command{
-	Use:   "cc",
-	Short: "cluster compression",
-	// TODO: add detail usage info
-	Long:          `cluster compression`,
-	SilenceErrors: false,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return errors.New("not implemented")
-	},
-}
+var clusterCompressionLong = dedent.Dedent(`
+		cc simulates an API server with initial state copied from the Kubernetes environment
+		Its configuration is specified in KUBECONFIG. Simulated API server attempts to scale
+		down.The number of nodes specified by the --max-limits flag. If the --max-limits flag
+		is not specified, the most likely pods are scheduled onto as few nodes as possible, and a list of nodes that can be taken offline is given.
+	`)
 
 func NewClusterCompressionCmd() *cobra.Command {
-	return ccCmd
+	opt := options.NewClusterCompressionOptions()
+
+	var cmd = &cobra.Command{
+		Use:           "cc",
+		Short:         "cc uses simulation scheduling to calculate the number of nodes that can be offline in the cluster",
+		Long:          clusterCompressionLong,
+		SilenceErrors: false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			err := validateOptions(opt)
+			if err != nil {
+				return err
+			}
+
+			err = runClusterCompression(opt)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+
+	flags := cmd.Flags()
+	flags.SetNormalizeFunc(cliflag.WordSepNormalizeFunc)
+	flags.AddGoFlagSet(flag.CommandLine)
+	opt.AddFlags(flags)
+
+	return cmd
+}
+
+func validateOptions(opt *options.ClusterCompressionOptions) error {
+	_, present := os.LookupEnv("KC_INCLUSTER")
+	if !present {
+		if len(opt.KubeConfig) == 0 {
+			return errors.New("kubeconfig is missing")
+		}
+	}
+
+	return nil
+}
+
+func runClusterCompression(opt *options.ClusterCompressionOptions) error {
+	conf := options.NewClusterCompressionConfig(opt)
+
+	cfg, err := utils.BuildRestConfig(conf.Options.KubeConfig)
+	if err != nil {
+		return err
+	}
+	conf.KubeClient, err = clientset.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+	conf.RestConfig = cfg
+
+	reports, err := runCCSimulator(conf)
+	if err != nil {
+		klog.Errorf("runccsimulator err: %s\n", err.Error())
+		return err
+	}
+
+	if err := reports.Print(false, ""); err != nil {
+		return fmt.Errorf("error while printing: %v\n", err)
+	}
+
+	return nil
+}
+
+func runCCSimulator(conf *options.ClusterCompressionConfig) (framework.Printer, error) {
+	cc, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig)
+	if err != nil {
+		return nil, err
+	}
+	s, err := clustercompression.NewCCSimulatorExecutor(cc, conf.RestConfig, conf.Options.MaxLimit, conf.Options.ExcludeNodes, conf.Options.FilterNodeOptions.SkipTaintNode, conf.Options.FilterNodeOptions.SkipNotReadyNode)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.Initialize()
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	return s.Report(), nil
 }

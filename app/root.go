@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"k8s.io/klog/v2"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation"
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression"
@@ -43,6 +44,7 @@ var rootCmd = &cobra.Command{
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	klog.InitFlags(nil)
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)

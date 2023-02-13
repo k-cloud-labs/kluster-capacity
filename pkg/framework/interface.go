@@ -3,6 +3,7 @@ package framework
 import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	clientset "k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -16,6 +17,8 @@ type Simulator interface {
 	InitTheWorld(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
 	UpdateStatus(pod ...*corev1.Pod)
+	UpdateStatusNode(nodeName string)
+	GetClient() clientset.Interface
 	Status() Status
 	Stop(reason string) error
 }
