@@ -16,7 +16,9 @@ type Simulator interface {
 	InitTheWorld(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
 	UpdateStatus(pod ...*corev1.Pod)
+	UpdateStatusScaleDownNodeNames(nodeName string)
 	Status() Status
+	GetPodsByNode(nodeName string) ([]*corev1.Pod, error)
 	Stop(reason string) error
 }
 

@@ -13,12 +13,14 @@ import (
 const Name = "GenericBinder"
 
 type GenericBinder struct {
-	client kubernetes.Interface
+	client       kubernetes.Interface
+	postBindHook func(*corev1.Pod) error
 }
 
-func New(client kubernetes.Interface) (framework.Plugin, error) {
+func New(postBindHook func(*corev1.Pod) error, client kubernetes.Interface) (framework.Plugin, error) {
 	return &GenericBinder{
-		client: client,
+		postBindHook: postBindHook,
+		client:       client,
 	}, nil
 }
 
@@ -44,4 +46,12 @@ func (b *GenericBinder) Bind(ctx context.Context, state *framework.CycleState, p
 
 func (b *GenericBinder) PreBind(ctx context.Context, state *framework.CycleState, p *corev1.Pod, nodeName string) *framework.Status {
 	return nil
+}
+
+func (b *GenericBinder) PostBind(_ context.Context, _ *framework.CycleState, pod *corev1.Pod, _ string) {
+	if b.postBindHook != nil {
+		if err := b.postBindHook(pod); err != nil {
+			framework.NewStatus(framework.Error, fmt.Sprintf("Invoking postBindHook gives an error: %v", err))
+		}
+	}
 }

@@ -36,6 +36,7 @@ import (
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultbinder"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/defaultpreemption"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	frameworkruntime "k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	"k8s.io/kubernetes/pkg/scheduler/profile"
@@ -84,9 +85,10 @@ var (
 
 // Status capture all scheduled pods with reason why the estimation could not continue
 type Status struct {
-	Pods       []*corev1.Pod
-	Nodes      map[string]corev1.Node
-	StopReason string
+	Pods               []*corev1.Pod
+	ScaleDownNodeNames []string
+	Nodes              map[string]corev1.Node
+	StopReason         string
 }
 
 type genericSimulator struct {
@@ -111,6 +113,7 @@ type genericSimulator struct {
 	customPreBind            kubeschedulerconfig.PluginSet
 	customPostBind           kubeschedulerconfig.PluginSet
 	customEventHandlers      []func()
+	postBindHook             func(*corev1.Pod) error
 
 	// for scheduler and informer
 	informerCh  chan struct{}
@@ -183,6 +186,12 @@ func WithIgnorePodsOnExcludesNode(with bool) Option {
 	}
 }
 
+func WithPostBindHook(postBindHook func(*corev1.Pod) error) Option {
+	return func(s *genericSimulator) {
+		s.postBindHook = postBindHook
+	}
+}
+
 func WithSaveTo(to string) Option {
 	return func(s *genericSimulator) {
 		s.saveTo = to
@@ -251,6 +260,24 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 	return s, nil
 }
 
+func (s *genericSimulator) GetPodsByNode(nodeName string) ([]*corev1.Pod, error) {
+	dump := s.scheduler.Cache.Dump()
+	var res []*corev1.Pod
+	if dump != nil && dump.Nodes[nodeName] != nil {
+		podInfos := dump.Nodes[nodeName].Pods
+		for i := range podInfos {
+			if podInfos[i].Pod != nil {
+				res = append(res, podInfos[i].Pod)
+			}
+		}
+	}
+
+	if res == nil {
+		return nil, errors.New("cannot get pods on the node because dump is nil")
+	}
+	return res, nil
+}
+
 // InitTheWorld use objs outside or default init resources to initialize the scheduler
 // the objs outside must be typed object.
 func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
@@ -288,6 +315,10 @@ func (s *genericSimulator) UpdateStatus(pod ...*corev1.Pod) {
 	s.status.Pods = append(s.status.Pods, pod...)
 }
 
+func (s *genericSimulator) UpdateStatusScaleDownNodeNames(nodeName string) {
+	s.status.ScaleDownNodeNames = append(s.status.ScaleDownNodeNames, nodeName)
+}
+
 func (s *genericSimulator) Status() Status {
 	return s.status
 }
@@ -301,9 +332,6 @@ func (s *genericSimulator) Stop(reason string) error {
 
 	s.stopMux.Lock()
 	defer func() {
-		close(s.stopCh)
-		close(s.informerCh)
-		close(s.schedulerCh)
 		s.stopMux.Unlock()
 	}()
 
@@ -328,6 +356,12 @@ func (s *genericSimulator) Stop(reason string) error {
 			return err
 		}
 	}
+
+	defer func() {
+		close(s.stopCh)
+		close(s.informerCh)
+		close(s.schedulerCh)
+	}()
 
 	s.status.StopReason = reason
 	s.status.Nodes = nodeMap
@@ -365,7 +399,7 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 		s.outOfTreeRegistry = make(frameworkruntime.Registry)
 	}
 	err := s.outOfTreeRegistry.Register(generic.Name, func(configuration runtime.Object, f framework.Handle) (framework.Plugin, error) {
-		return generic.New(s.fakeClient)
+		return generic.New(s.postBindHook, s.fakeClient)
 	})
 	if err != nil {
 		return nil, err
@@ -375,6 +409,8 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = []kubeschedulerconfig.Plugin{{Name: volumebinding.Name}}
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = []kubeschedulerconfig.Plugin{{Name: defaultbinder.Name}}
+	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
+	cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled = []kubeschedulerconfig.Plugin{{Name: defaultpreemption.Name}}
 
 	// custom bind plugin
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, s.customPreBind.Enabled...)
