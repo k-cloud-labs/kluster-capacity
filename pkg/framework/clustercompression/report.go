@@ -18,14 +18,13 @@ type ClusterCompressionReview struct {
 
 type ClusterCompressionReviewReviewStatus struct {
 	CreationTimestamp  time.Time                                   `json:"creationTimestamp"`
-	Replicas           int32                                       `json:"replicas"`
-	StopReason         *ClusterCompressionReviewScheduleFailReason `json:"stopReason"`
+	StopReason         *ClusterCompressionReviewScheduleStopReason `json:"stopReason"`
 	ScaleDownNodeNames []string                                    `json:"scaleDownNodeNames"`
 }
 
-type ClusterCompressionReviewScheduleFailReason struct {
-	FailType    string `json:"failType"`
-	FailMessage string `json:"failMessage"`
+type ClusterCompressionReviewScheduleStopReason struct {
+	StopType    string `json:"stopType"`
+	StopMessage string `json:"stopMessage"`
 }
 
 func generateReport(status pkg.Status) *ClusterCompressionReview {
@@ -37,19 +36,18 @@ func generateReport(status pkg.Status) *ClusterCompressionReview {
 func getReviewStatus(status pkg.Status) ClusterCompressionReviewReviewStatus {
 	return ClusterCompressionReviewReviewStatus{
 		CreationTimestamp:  time.Now(),
-		Replicas:           int32(len(status.ScaleDownNodeNames)),
 		StopReason:         getMainStopReason(status.StopReason),
-		ScaleDownNodeNames: status.ScaleDownNodeNames,
+		ScaleDownNodeNames: status.NodesToScaleDown,
 	}
 }
 
-func getMainStopReason(message string) *ClusterCompressionReviewScheduleFailReason {
+func getMainStopReason(message string) *ClusterCompressionReviewScheduleStopReason {
 	slicedMessage := strings.Split(message, "\n")
 	colon := strings.Index(slicedMessage[0], ":")
 
-	reason := &ClusterCompressionReviewScheduleFailReason{
-		FailType:    slicedMessage[0][:colon],
-		FailMessage: strings.Trim(slicedMessage[0][colon+1:], " "),
+	reason := &ClusterCompressionReviewScheduleStopReason{
+		StopType:    slicedMessage[0][:colon],
+		StopMessage: strings.Trim(slicedMessage[0][colon+1:], " "),
 	}
 	return reason
 }
@@ -59,17 +57,27 @@ func (r *ClusterCompressionReview) Print(verbose bool, format string) error {
 	case "json":
 		return utils.PrintJson(r)
 	default:
-		return clusterCapacityReviewDefaultPrint(r)
+		return clusterCapacityReviewDefaultPrint(r, verbose)
 	}
 }
 
-func clusterCapacityReviewDefaultPrint(r *ClusterCompressionReview) error {
-	if r != nil && r.Status.ScaleDownNodeNames != nil && len(r.Status.ScaleDownNodeNames) > 0 {
-		for i := range r.Status.ScaleDownNodeNames {
-			fmt.Println(r.Status.ScaleDownNodeNames[i])
+func clusterCapacityReviewDefaultPrint(r *ClusterCompressionReview, verbose bool) error {
+	if r != nil && len(r.Status.ScaleDownNodeNames) > 0 {
+		if verbose {
+			fmt.Printf("%d node(s) in the cluster can be scaled down.\n", len(r.Status.ScaleDownNodeNames))
+			fmt.Printf("\nTermination reason: %v: %v\n", r.Status.StopReason.StopType, r.Status.StopReason.StopMessage)
+			fmt.Printf("\nnodes selected to be scaled down:\n")
+
+			for i := range r.Status.ScaleDownNodeNames {
+				fmt.Printf("\t- %s\n", r.Status.ScaleDownNodeNames[i])
+			}
+		} else {
+			for i := range r.Status.ScaleDownNodeNames {
+				fmt.Println(r.Status.ScaleDownNodeNames[i])
+			}
 		}
 	} else {
-		fmt.Println("There are no nodes in the cluster to scale down")
+		fmt.Println("No nodes in the cluster can be scaled down.")
 	}
 
 	return nil

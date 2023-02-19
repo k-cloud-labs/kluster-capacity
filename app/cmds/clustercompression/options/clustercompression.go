@@ -46,4 +46,5 @@ func (s *ClusterCompressionOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.FilterNodeOptions.IgnoreCloneSet, "ignore-cloneset", false, "Whether to ignore nodes with cloneSet pods when filtering nodes. By default false.")
 	fs.BoolVar(&s.FilterNodeOptions.IgnoreVolumePod, "ignore-volume-pod", false, "Whether to ignore nodes with volume pods when filtering nodes. By default false.")
 	fs.StringSliceVar(&s.ExcludeNodes, "exclude-nodes", s.ExcludeNodes, "Exclude nodes to be scheduled")
+	fs.BoolVar(&s.Verbose, "verbose", s.Verbose, "Verbose mode")
 }

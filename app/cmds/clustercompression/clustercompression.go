@@ -51,7 +51,7 @@ func NewClusterCompressionCmd() *cobra.Command {
 				return err
 			}
 
-			err = runClusterCompression(opt)
+			err = run(opt)
 			if err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func validateOptions(opt *options.ClusterCompressionOptions) error {
 	return nil
 }
 
-func runClusterCompression(opt *options.ClusterCompressionOptions) error {
+func run(opt *options.ClusterCompressionOptions) error {
 	defer klog.Flush()
 	conf := options.NewClusterCompressionConfig(opt)
 
@@ -93,7 +93,7 @@ func runClusterCompression(opt *options.ClusterCompressionOptions) error {
 		return err
 	}
 
-	if err := reports.Print(false, conf.Options.OutputFormat); err != nil {
+	if err := reports.Print(conf.Options.Verbose, conf.Options.OutputFormat); err != nil {
 		return fmt.Errorf("error while printing: %v\n", err)
 	}
 	return nil

@@ -58,6 +58,7 @@ func init() {
 
 var (
 	initResources = map[schema.GroupVersionKind]func() runtime.Object{
+		corev1.SchemeGroupVersion.WithKind("Namespace"):             func() runtime.Object { return &corev1.Namespace{} },
 		corev1.SchemeGroupVersion.WithKind("Pod"):                   func() runtime.Object { return &corev1.Pod{} },
 		corev1.SchemeGroupVersion.WithKind("Node"):                  func() runtime.Object { return &corev1.Node{} },
 		corev1.SchemeGroupVersion.WithKind("PersistentVolume"):      func() runtime.Object { return &corev1.PersistentVolume{} },
@@ -291,12 +292,12 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 	return nil
 }
 
-func (s *genericSimulator) UpdateStatus(pod ...*corev1.Pod) {
+func (s *genericSimulator) UpdateScheduledPods(pod ...*corev1.Pod) {
 	s.status.Pods = append(s.status.Pods, pod...)
 }
 
-func (s *genericSimulator) UpdateStatusScaleDownNodeNames(nodeName string) {
-	s.status.ScaleDownNodeNames = append(s.status.ScaleDownNodeNames, nodeName)
+func (s *genericSimulator) UpdateNodesToScaleDown(nodeName string) {
+	s.status.NodesToScaleDown = append(s.status.NodesToScaleDown, nodeName)
 }
 
 func (s *genericSimulator) Status() pkg.Status {

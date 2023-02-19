@@ -6,24 +6,33 @@ import (
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
-// FilterFunc is a filter for a node.
-type FilterFunc func(*corev1.Node) bool
+const (
+	ErrReasonFailedScaleDown   = "node(s) can't be scale down because of insufficient resource in other nodes"
+	ErrReasonScaleDownDisabled = "node(s) have label with scale down disabled"
+	ErrReasonMasterNode        = "master node(s)"
+	ErrReasonTaintNode         = "node(s) have taint"
+	ErrReasonExcludeNode       = "exclude node(s)"
+	ErrReasonNotReadyNode      = "not ready node(s)"
+	ErrReasonStaticPod         = "node(s) have static pod"
+	ErrReasonMirrorPod         = "node(s) have mirror pod"
+	ErrReasonCloneset          = "node(s) have inplace update pod"
+	ErrReasonVolumePod         = "node(s) have pod used hostpath"
+	ErrReasonUnknown           = "node(s) have unknown error"
+)
 
-// WrapFilterFuncs wraps a set of FilterFunc in one.
-func WrapFilterFuncs(filters ...FilterFunc) FilterFunc {
-	return func(node *corev1.Node) bool {
-		for _, filter := range filters {
-			if filter != nil && !filter(node) {
-				return false
-			}
-		}
-		return true
-	}
+// FilterFunc is a filter for a node.
+type FilterFunc func(*corev1.Node) *FilterStatus
+type PodsByNodeFunc func(name string) ([]*corev1.Pod, error)
+
+type FilterStatus struct {
+	// true means that node is able to simulate
+	Success   bool
+	ErrReason string
 }
 
 type Options struct {
-	simulator           *simulator
 	filter              FilterFunc
+	getPodsByNode       PodsByNodeFunc
 	excludeNodes        map[string]bool
 	excludeTaintNode    bool
 	excludeNotReadyNode bool
@@ -44,20 +53,20 @@ func (o *Options) WithFilter(filter FilterFunc) *Options {
 	return o
 }
 
-// WithoutNodes sets excluded node
-func (o *Options) WithoutNodes(nodes map[string]bool) *Options {
+// WithExcludeNodes sets excluded node
+func (o *Options) WithExcludeNodes(nodes map[string]bool) *Options {
 	o.excludeNodes = nodes
 	return o
 }
 
-// WithoutTaint set taint options
-func (o *Options) WithoutTaint(excludeTaintNode bool) *Options {
+// WithExcludeTaintNodes set taint options
+func (o *Options) WithExcludeTaintNodes(excludeTaintNode bool) *Options {
 	o.excludeTaintNode = excludeTaintNode
 	return o
 }
 
-// WithoutNotReady set notReady options
-func (o *Options) WithoutNotReady(excludeNotReadyNode bool) *Options {
+// WithExcludeNotReadyNodes set notReady options
+func (o *Options) WithExcludeNotReadyNodes(excludeNotReadyNode bool) *Options {
 	o.excludeNotReadyNode = excludeNotReadyNode
 	return o
 }
@@ -86,53 +95,80 @@ func (o *Options) WithIgnoreVolumePod(ignoreVolumePod bool) *Options {
 	return o
 }
 
-func (o *Options) WithSimulator(s *simulator) *Options {
-	o.simulator = s
+func (o *Options) WithPodsByNodeFunc(podsByNodeFunc PodsByNodeFunc) *Options {
+	o.getPodsByNode = podsByNodeFunc
 	return o
 }
 
 // BuildFilterFunc builds a final FilterFunc based on Options.
 func (o *Options) BuildFilterFunc() FilterFunc {
-	return func(node *corev1.Node) bool {
-		if o.filter != nil && !o.filter(node) {
-			return false
+	return func(node *corev1.Node) *FilterStatus {
+		if o.filter != nil {
+			status := o.filter(node)
+			if status != nil && !status.Success {
+				return status
+			}
 		}
 
 		if len(o.excludeNodes) > 0 && o.excludeNodes[node.Name] {
-			return false
+			return &FilterStatus{
+				Success:   false,
+				ErrReason: ErrReasonExcludeNode,
+			}
 		}
 
 		if o.excludeTaintNode && haveNodeTaint(node) {
-			return false
+			return &FilterStatus{
+				Success:   false,
+				ErrReason: ErrReasonTaintNode,
+			}
 		}
-		if o.excludeNotReadyNode && isNodeReady(node) {
-			return false
+		if o.excludeNotReadyNode && isNodeNotReady(node) {
+			return &FilterStatus{
+				Success:   false,
+				ErrReason: ErrReasonNotReadyNode,
+			}
 		}
 
-		podList, err := o.simulator.GetPodsByNode(node.Name)
+		podList, err := o.getPodsByNode(node.Name)
 		if err != nil {
-			return false
+			return &FilterStatus{
+				Success:   false,
+				ErrReason: ErrReasonUnknown,
+			}
 		}
 
 		for i := range podList {
 			if o.ignoreMirrorPod && utils.IsStaticPod(podList[i]) {
-				return false
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonStaticPod,
+				}
 			}
 
 			if o.ignoreMirrorPod && utils.IsMirrorPod(podList[i]) {
-				return false
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonMirrorPod,
+				}
 			}
 
 			if o.ignoreVolumePod && utils.IsPodWithLocalStorage(podList[i]) {
-				return false
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonVolumePod,
+				}
 			}
 
 			if o.ignoreCloneSet && utils.IsCloneSetPod(podList[i].OwnerReferences) {
-				return false
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonCloneset,
+				}
 			}
 
 		}
-		return true
+		return &FilterStatus{Success: true}
 	}
 }
 
@@ -140,7 +176,7 @@ func haveNodeTaint(node *corev1.Node) bool {
 	return len(node.Spec.Taints) != 0
 }
 
-func isNodeReady(node *corev1.Node) bool {
+func isNodeNotReady(node *corev1.Node) bool {
 	for _, cond := range node.Status.Conditions {
 		// We consider the node for scheduling only when its:
 		// - NodeReady condition status is ConditionTrue,

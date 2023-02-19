@@ -23,22 +23,21 @@ import (
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
-const (
-	TaintUnScheduleKey = "node.kubernetes.io/unschedulable"
-)
+const FailedSelectNode = "FailedSelectNode: could not find a node that satisfies the condition"
 
 // only support one scheduler for now and the scheduler name is "default-scheduler"
 type simulator struct {
 	pkg.Simulator
 
-	maxSimulated        int
-	simulated           int
-	fakeClient          clientset.Interface
-	createdPods         []*corev1.Pod
-	currentNode         string
-	mux                 sync.Mutex
-	bindSuccessPodCount int
-	nodeFilter          NodeFilter
+	maxSimulated             int
+	simulated                int
+	fakeClient               clientset.Interface
+	createdPods              []*corev1.Pod
+	currentNode              string
+	currentNodeUnschedulable bool
+	mux                      sync.Mutex
+	bindSuccessPodCount      int
+	nodeFilter               NodeFilter
 }
 
 // NewCCSimulatorExecutor create a ce simulator which is completely independent of apiserver so no need
@@ -77,7 +76,7 @@ func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.Simulat
 
 	s.Simulator = genericSimulator
 	s.fakeClient = cc.Client
-	nodeFilter, err := NewNodeFilter(s, conf.Options.ExcludeNodes, conf.Options.FilterNodeOptions)
+	nodeFilter, err := NewNodeFilter(s.fakeClient, s.GetPodsByNode, conf.Options.ExcludeNodes, conf.Options.FilterNodeOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -97,8 +96,8 @@ func (s *simulator) Initialize(objs ...runtime.Object) error {
 }
 
 func (s *simulator) Report() pkg.Printer {
-	klog.Infof("the following nodes can be offline to save resources: %v", s.Status().ScaleDownNodeNames)
-	klog.Infof("the clusterCompression StopReason: %s", s.Status().StopReason)
+	klog.V(4).Infof("the following nodes can be offline to save resources: %v", s.Status().NodesToScaleDown)
+	klog.V(4).Infof("the clusterCompression StopReason: %s", s.Status().StopReason)
 	return generateReport(s.Status())
 }
 
@@ -130,15 +129,15 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 
 	if len(podList) > 0 && !flag && s.currentNode != "" {
 		if s.bindSuccessPodCount == len(s.createdPods) {
-			s.UpdateStatusScaleDownNodeNames(s.currentNode)
-			klog.Infof("add node %s to simulator status", s.currentNode)
+			klog.V(4).Infof("add node %s to simulator status", s.currentNode)
+			s.UpdateNodesToScaleDown(s.currentNode)
 			s.createdPods = nil
 			s.currentNode = ""
 			s.simulated++
 
 			err := s.selectNextNode()
 			if err != nil {
-				return s.Stop("FailedSelectorNode: could not find a node that satisfies the condition")
+				return s.Stop(fmt.Sprintf("%s, %s", FailedSelectNode, err.Error()))
 			}
 		}
 	}
@@ -147,11 +146,12 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 }
 
 func (s *simulator) selectNextNode() error {
-	node := s.nodeFilter.SelectNode()
-	if node == nil {
-		return errors.New("there is no node that can be offline in the cluster")
+	status := s.nodeFilter.SelectNode()
+	if status != nil && status.Node == nil {
+		return errors.New(status.ErrReason)
 	}
-	klog.Infof("select %s node to simulator\n", node.Name)
+	node := status.Node
+	klog.V(4).Infof("select node %s to simulate\n", node.Name)
 
 	s.bindSuccessPodCount = 0
 
@@ -166,6 +166,7 @@ func (s *simulator) selectNextNode() error {
 	}
 
 	s.currentNode = node.Name
+	s.currentNodeUnschedulable = node.Spec.Unschedulable
 	return nil
 }
 
@@ -179,13 +180,13 @@ func (s *simulator) cordon(node *corev1.Node) error {
 
 	taints := []corev1.Taint{}
 	unScheduleTaint := corev1.Taint{
-		Key:    TaintUnScheduleKey,
+		Key:    corev1.TaintNodeUnschedulable,
 		Effect: corev1.TaintEffectNoSchedule,
 	}
 	taints = append(taints, unScheduleTaint)
 
 	for i := range copy.Spec.Taints {
-		if copy.Spec.Taints[i].Key != TaintUnScheduleKey {
+		if copy.Spec.Taints[i].Key != corev1.TaintNodeUnschedulable {
 			taints = append(taints, copy.Spec.Taints[i])
 		}
 	}
@@ -195,7 +196,7 @@ func (s *simulator) cordon(node *corev1.Node) error {
 	if err != nil {
 		return err
 	}
-	klog.Infof("cordon node %s successfully\n", node.Name)
+	klog.V(4).Infof("cordon node %s successfully\n", node.Name)
 	return nil
 }
 
@@ -209,7 +210,7 @@ func (s *simulator) unCordon(nodeName string) error {
 
 	taints := []corev1.Taint{}
 	for i := range copy.Spec.Taints {
-		if copy.Spec.Taints[i].Key != TaintUnScheduleKey {
+		if copy.Spec.Taints[i].Key != corev1.TaintNodeUnschedulable {
 			taints = append(taints, copy.Spec.Taints[i])
 		}
 	}
@@ -219,7 +220,7 @@ func (s *simulator) unCordon(nodeName string) error {
 	if err != nil {
 		return err
 	}
-	klog.Infof("unCordon node %s successfully\n", nodeName)
+	klog.V(4).Infof("unCordon node %s successfully\n", nodeName)
 	return nil
 
 }
@@ -237,7 +238,7 @@ func (s *simulator) addLabelToNode(nodeName string, labelKey string, labelValue 
 	if err != nil {
 		return err
 	}
-	klog.Infof("add node %s skip label successfully\n", node.Name)
+	klog.V(4).Infof("add node %s failed scale down label successfully\n", node.Name)
 	return nil
 }
 
@@ -303,21 +304,23 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 							if podCondition.Type == corev1.PodScheduled && podCondition.Status == corev1.ConditionFalse &&
 								podCondition.Reason == corev1.PodReasonUnschedulable {
 								// 1. Empty all Pods created by fake before
-								// 2. unCordon this node
-								// 3. Type the flags that cannot be filtered, clear the flags that prohibit scheduling, and skip to selectNextNode
-								klog.Warningf("Failed scheduling pod %s, reason: %s, message: %s\n", pod.Namespace+"/"+pod.Name, podCondition.Reason, podCondition.Message)
+								// 2. Uncordon this node if needed
+								// 3. Type the flags that cannot be filtered, clear the flags that prohibit scheduling, add failed scale down label, then selectNextNode
+								klog.V(4).Infof("Failed scheduling pod %s, reason: %s, message: %s\n", pod.Namespace+"/"+pod.Name, podCondition.Reason, podCondition.Message)
 								err = s.updatePodsFromCreatedPods()
 								if err != nil {
 									err = s.Stop("FailedDeletePodsFromCreatedPods: " + err.Error())
 								}
 
 								if s.currentNode != "" {
-									err = s.unCordon(s.currentNode)
-									if err != nil {
-										err = s.Stop("FailedUnCordon: " + err.Error())
+									if !s.currentNodeUnschedulable {
+										err = s.unCordon(s.currentNode)
+										if err != nil {
+											err = s.Stop("FailedUnCordon: " + err.Error())
+										}
 									}
 
-									err = s.addLabelToNode(s.currentNode, NodeSkipLabel, "true")
+									err = s.addLabelToNode(s.currentNode, NodeScaledDownFailedLabel, "true")
 									if err != nil {
 										err = s.Stop("FailedAddLabelToNode: " + err.Error())
 									}
@@ -325,7 +328,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 
 								err = s.selectNextNode()
 								if err != nil {
-									err = s.Stop("FailedSelectorNode: could not find a node that satisfies the condition")
+									_ = s.Stop(fmt.Sprintf("%s, %s", FailedSelectNode, err.Error()))
 								}
 							}
 						}
@@ -344,7 +347,7 @@ func (s *simulator) getPodsByNode(node *corev1.Node) ([]*corev1.Pod, error) {
 		return nil, err
 	}
 
-	klog.Infof("node %s has %d pods\n", node.Name, len(podList))
+	klog.V(4).Infof("node %s has %d pods\n", node.Name, len(podList))
 	return podList, nil
 
 }
