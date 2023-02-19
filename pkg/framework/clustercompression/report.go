@@ -7,7 +7,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
@@ -28,13 +28,13 @@ type ClusterCompressionReviewScheduleFailReason struct {
 	FailMessage string `json:"failMessage"`
 }
 
-func generateReport(status pkgframework.Status) *ClusterCompressionReview {
+func generateReport(status pkg.Status) *ClusterCompressionReview {
 	return &ClusterCompressionReview{
 		Status: getReviewStatus(status),
 	}
 }
 
-func getReviewStatus(status pkgframework.Status) ClusterCompressionReviewReviewStatus {
+func getReviewStatus(status pkg.Status) ClusterCompressionReviewReviewStatus {
 	return ClusterCompressionReviewReviewStatus{
 		CreationTimestamp:  time.Now(),
 		Replicas:           int32(len(status.ScaleDownNodeNames)),

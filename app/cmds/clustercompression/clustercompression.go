@@ -19,7 +19,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
@@ -27,9 +26,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression/options"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/clustercompression"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 var clusterCompressionLong = dedent.Dedent(`
@@ -74,11 +72,12 @@ func NewClusterCompressionCmd() *cobra.Command {
 }
 
 func validateOptions(opt *options.ClusterCompressionOptions) error {
-	_, present := os.LookupEnv("KC_INCLUSTER")
-	if !present {
-		if len(opt.KubeConfig) == 0 {
-			return errors.New("kubeconfig is missing")
-		}
+	if len(opt.KubeConfig) == 0 {
+		return errors.New("kubeconfig is missing")
+	}
+
+	if len(opt.SchedulerConfig) == 0 {
+		return errors.New("schedulerconfig is missing")
 	}
 
 	return nil
@@ -87,12 +86,6 @@ func validateOptions(opt *options.ClusterCompressionOptions) error {
 func runClusterCompression(opt *options.ClusterCompressionOptions) error {
 	defer klog.Flush()
 	conf := options.NewClusterCompressionConfig(opt)
-
-	cfg, err := utils.BuildRestConfig(conf.Options.KubeConfig)
-	if err != nil {
-		return err
-	}
-	conf.RestConfig = cfg
 
 	reports, err := runCCSimulator(conf)
 	if err != nil {
@@ -106,7 +99,7 @@ func runClusterCompression(opt *options.ClusterCompressionOptions) error {
 	return nil
 }
 
-func runCCSimulator(conf *options.ClusterCompressionConfig) (framework.Printer, error) {
+func runCCSimulator(conf *options.ClusterCompressionConfig) (pkg.Printer, error) {
 	s, err := clustercompression.NewCCSimulatorExecutor(conf)
 	if err != nil {
 		return nil, err

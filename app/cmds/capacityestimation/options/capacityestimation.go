@@ -16,19 +16,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 type CapacityEstimationOptions struct {
+	cmds.Options
 	PodsFromTemplate []string
 	PodsFromCluster  NamespaceNames
-	SchedulerConfig  string
-	OutputFormat     string
-	KubeConfig       string
-	MaxLimit         int
-	Verbose          bool
-	ExcludeNodes     []string
-	SaveTo           string
 }
 
 type CapacityEstimationConfig struct {
@@ -52,7 +47,7 @@ func (s *CapacityEstimationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringSliceVar(&s.PodsFromTemplate, "pods-from-template", s.PodsFromTemplate, "Path to JSON or YAML file containing pod definition. Comma seperated and Exclusive with --pods-from-cluster")
 	fs.Var(&s.PodsFromCluster, "pods-from-cluster", "Namespace/Name of the pod from existing cluster. Comma seperated and Exclusive with --pods-from-template")
 	fs.IntVar(&s.MaxLimit, "max-limit", 0, "Number of instances of pod to be scheduled after which analysis stops. By default unlimited")
-	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration")
+	fs.StringVar(&s.SchedulerConfig, "schedulerconfig", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration")
 	fs.BoolVar(&s.Verbose, "verbose", s.Verbose, "Verbose mode")
 	fs.StringVarP(&s.OutputFormat, "output", "o", s.OutputFormat, "Output format. One of: json|yaml (Note: output is not versioned or guaranteed to be stable across releases)")
 	fs.StringSliceVar(&s.ExcludeNodes, "exclude-nodes", s.ExcludeNodes, "Exclude nodes to be scheduled")

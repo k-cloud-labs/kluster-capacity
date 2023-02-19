@@ -18,6 +18,7 @@ import (
 	apiv1 "k8s.io/kubernetes/pkg/apis/core/v1"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression/options"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
@@ -28,7 +29,7 @@ const (
 
 // only support one scheduler for now and the scheduler name is "default-scheduler"
 type simulator struct {
-	pkgframework.Simulator
+	pkg.Simulator
 
 	maxSimulated        int
 	simulated           int
@@ -42,8 +43,13 @@ type simulator struct {
 
 // NewCCSimulatorExecutor create a ce simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
-func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkgframework.SimulatorExecutor, error) {
-	cc, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig)
+func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.SimulatorExecutor, error) {
+	cc, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig, conf.Options.KubeConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	kubeConfig, err := utils.BuildRestConfig(conf.Options.KubeConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +67,7 @@ func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkgframewor
 		return nil, err
 	}
 
-	genericSimulator, err := pkgframework.NewGenericSimulator(cc, conf.RestConfig,
+	genericSimulator, err := pkgframework.NewGenericSimulator(cc, kubeConfig,
 		pkgframework.WithExcludeNodes(conf.Options.ExcludeNodes),
 		pkgframework.WithPostBindHook(s.postBindHook),
 	)
@@ -90,14 +96,14 @@ func (s *simulator) Initialize(objs ...runtime.Object) error {
 	return s.selectNextNode()
 }
 
-func (s *simulator) Report() pkgframework.Printer {
+func (s *simulator) Report() pkg.Printer {
 	klog.Infof("the following nodes can be offline to save resources: %v", s.Status().ScaleDownNodeNames)
 	klog.Infof("the clusterCompression StopReason: %s", s.Status().StopReason)
 	return generateReport(s.Status())
 }
 
 func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
-	if !metav1.HasAnnotation(bindPod.ObjectMeta, pkgframework.PodProvisioner) {
+	if !metav1.HasAnnotation(bindPod.ObjectMeta, pkg.PodProvisioner) {
 		return nil
 	}
 
@@ -283,8 +289,8 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 	_, _ = informerFactory.Core().V1().Pods().Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				if pod, ok := obj.(*corev1.Pod); ok && pod.Spec.SchedulerName == pkgframework.SchedulerName &&
-					metav1.HasAnnotation(pod.ObjectMeta, pkgframework.PodProvisioner) {
+				if pod, ok := obj.(*corev1.Pod); ok && pod.Spec.SchedulerName == pkg.SchedulerName &&
+					metav1.HasAnnotation(pod.ObjectMeta, pkg.PodProvisioner) {
 					return true
 				}
 				return false
@@ -352,7 +358,7 @@ func initPod(input *corev1.Pod) *corev1.Pod {
 
 	// reset pod
 	pod.Spec.NodeName = ""
-	pod.Spec.SchedulerName = pkgframework.SchedulerName
+	pod.Spec.SchedulerName = pkg.SchedulerName
 	pod.Status = corev1.PodStatus{}
 
 	// use simulated pod name with an index to construct the name
@@ -363,7 +369,7 @@ func initPod(input *corev1.Pod) *corev1.Pod {
 	if pod.ObjectMeta.Annotations == nil {
 		pod.ObjectMeta.Annotations = map[string]string{}
 	}
-	pod.ObjectMeta.Annotations[pkgframework.PodProvisioner] = pkgframework.SchedulerName
+	pod.ObjectMeta.Annotations[pkg.PodProvisioner] = pkg.SchedulerName
 
 	return pod
 }

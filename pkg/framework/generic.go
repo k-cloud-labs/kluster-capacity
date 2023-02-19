@@ -42,7 +42,9 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/profile"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/plugins/generic"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 func init() {
@@ -83,14 +85,6 @@ var (
 	initObjects []runtime.Object
 )
 
-// Status capture all scheduled pods with reason why the estimation could not continue
-type Status struct {
-	Pods               []*corev1.Pod
-	ScaleDownNodeNames []string
-	Nodes              map[string]corev1.Node
-	StopReason         string
-}
-
 type genericSimulator struct {
 	// fake clientset used by scheduler
 	fakeClient clientset.Interface
@@ -125,7 +119,7 @@ type genericSimulator struct {
 	stopped bool
 
 	// final status
-	status Status
+	status pkg.Status
 	// save status to this file if specified
 	saveTo string
 }
@@ -200,22 +194,8 @@ func WithSaveTo(to string) Option {
 
 // NewGenericSimulator create a generic simulator for ce, cc, ss simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
-func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (Simulator, error) {
+func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (pkg.Simulator, error) {
 	kubeSchedulerConfig.InformerFactory.InformerFor(&corev1.Pod{}, newPodInformer)
-
-	// create internal namespace for simulated pod
-	_, err := kubeSchedulerConfig.Client.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Namespace",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: Namespace,
-		},
-	}, metav1.CreateOptions{})
-	if err != nil {
-		return nil, err
-	}
 
 	dynamicClient := dynamic.NewForConfigOrDie(restConfig)
 	restMapper, err := apiutil.NewDynamicRESTMapper(restConfig)
@@ -319,7 +299,7 @@ func (s *genericSimulator) UpdateStatusScaleDownNodeNames(nodeName string) {
 	s.status.ScaleDownNodeNames = append(s.status.ScaleDownNodeNames, nodeName)
 }
 
-func (s *genericSimulator) Status() Status {
+func (s *genericSimulator) Status() pkg.Status {
 	return s.status
 }
 
@@ -405,12 +385,12 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 		return nil, err
 	}
 
-	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
-	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = []kubeschedulerconfig.Plugin{{Name: volumebinding.Name}}
-	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
-	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = []kubeschedulerconfig.Plugin{{Name: defaultbinder.Name}}
-	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled = []kubeschedulerconfig.Plugin{{Name: generic.Name}}
-	cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled = []kubeschedulerconfig.Plugin{{Name: defaultpreemption.Name}}
+	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled, kubeschedulerconfig.Plugin{Name: volumebinding.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled, kubeschedulerconfig.Plugin{Name: defaultbinder.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled, kubeschedulerconfig.Plugin{Name: defaultpreemption.Name})
 
 	// custom bind plugin
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, s.customPreBind.Enabled...)
@@ -455,15 +435,8 @@ func (s *genericSimulator) preAdd(obj runtime.Object) (bool, runtime.Object) {
 			return false, nil
 		}
 		if !s.withScheduledPods {
-			pod.Spec.SchedulerName = SchedulerName
-			if pod.Annotations == nil {
-				pod.Annotations = make(map[string]string)
-			}
-			pod.Annotations[PodProvisioner] = SchedulerName
-			pod.Spec.NodeName = ""
+			pod := utils.InitPod(pod)
 			pod.Status.Phase = corev1.PodPending
-			pod.Status.Conditions = nil
-			pod.Status.Reason = ""
 
 			return true, pod
 		}

@@ -1,15 +1,17 @@
-package framework
+package pkg
 
 import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-const (
-	Namespace      = "kclabs-system"
-	PodProvisioner = "kc.k-cloud-labs.io/provisioned-by"
-	SchedulerName  = "simulator-scheduler"
-)
+// Status capture all scheduled pods with reason why the estimation could not continue
+type Status struct {
+	Pods               []*corev1.Pod
+	ScaleDownNodeNames []string
+	Nodes              map[string]corev1.Node
+	StopReason         string
+}
 
 type Simulator interface {
 	Run() error

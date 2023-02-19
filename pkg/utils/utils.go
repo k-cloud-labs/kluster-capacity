@@ -22,7 +22,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
-	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 )
 
 func BuildRestConfig(config string) (*restclient.Config, error) {
@@ -48,7 +48,7 @@ func BuildRestConfig(config string) (*restclient.Config, error) {
 	}
 }
 
-func BuildKubeSchedulerCompletedConfig(config string) (*schedconfig.CompletedConfig, error) {
+func BuildKubeSchedulerCompletedConfig(config, kubeconfig string) (*schedconfig.CompletedConfig, error) {
 	var kcfg *kubeschedulerconfig.KubeSchedulerConfiguration
 	if len(config) > 0 {
 		cfg, err := loadConfigFromFile(config)
@@ -61,6 +61,10 @@ func BuildKubeSchedulerCompletedConfig(config string) (*schedconfig.CompletedCon
 		kcfg = cfg
 	}
 
+	if len(kcfg.ClientConnection.Kubeconfig) == 0 && len(kubeconfig) > 0 {
+		kcfg.ClientConnection.Kubeconfig = kubeconfig
+	}
+
 	cc, err := buildKubeSchedulerCompletedConfig(kcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init kube scheduler configuration: %v ", err)
@@ -69,7 +73,7 @@ func BuildKubeSchedulerCompletedConfig(config string) (*schedconfig.CompletedCon
 	return cc, nil
 }
 
-func PrintJson(r pkgframework.Printer) error {
+func PrintJson(r pkg.Printer) error {
 	jsonBytes, err := json.Marshal(r)
 	if err != nil {
 		return fmt.Errorf("failed to create json: %v", err)
@@ -78,7 +82,7 @@ func PrintJson(r pkgframework.Printer) error {
 	return nil
 }
 
-func PrintYaml(r pkgframework.Printer) error {
+func PrintYaml(r pkg.Printer) error {
 	yamlBytes, err := yaml.Marshal(r)
 	if err != nil {
 		return fmt.Errorf("failed to create yaml: %v", err)
@@ -125,7 +129,7 @@ func buildKubeSchedulerCompletedConfig(kcfg *kubeschedulerconfig.KubeSchedulerCo
 		}
 	}
 
-	kcfg.Profiles[0].SchedulerName = pkgframework.SchedulerName
+	kcfg.Profiles[0].SchedulerName = pkg.SchedulerName
 	if kcfg.Profiles[0].Plugins == nil {
 		kcfg.Profiles[0].Plugins = &kubeschedulerconfig.Plugins{}
 	}

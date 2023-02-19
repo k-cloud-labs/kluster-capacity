@@ -3,8 +3,13 @@ package utils
 import (
 	"fmt"
 
+	uuid "github.com/satori/go.uuid"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	apiv1 "k8s.io/kubernetes/pkg/apis/core/v1"
+
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 )
 
 // IsMirrorPod returns true if the pod is a Mirror Pod.
@@ -63,4 +68,31 @@ func GetPodSource(pod *corev1.Pod) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("cannot get source of pod %q", pod.UID)
+}
+
+func InitPod(podTemplate *corev1.Pod) *corev1.Pod {
+	pod := podTemplate.DeepCopy()
+
+	apiv1.SetObjectDefaults_Pod(pod)
+
+	// reset pod
+	pod.Spec.NodeName = ""
+	pod.Spec.SchedulerName = pkg.SchedulerName
+	pod.Namespace = podTemplate.Namespace
+	if pod.Namespace == "" {
+		pod.Namespace = metav1.NamespaceDefault
+	}
+	pod.Status = corev1.PodStatus{}
+
+	// use simulated pod name with an index to construct the name
+	pod.ObjectMeta.Name = podTemplate.Name
+	pod.ObjectMeta.UID = types.UID(uuid.NewV4().String())
+
+	// Add pod provisioner annotation
+	if pod.ObjectMeta.Annotations == nil {
+		pod.ObjectMeta.Annotations = map[string]string{}
+	}
+	pod.ObjectMeta.Annotations[pkg.PodProvisioner] = pkg.SchedulerName
+
+	return pod
 }

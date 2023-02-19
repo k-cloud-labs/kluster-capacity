@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
-	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
@@ -127,7 +127,7 @@ func (r CapacityEstimationReviews) Print(verbose bool, format string) error {
 	return nil
 }
 
-func generateReport(pods []*corev1.Pod, status pkgframework.Status) *CapacityEstimationReview {
+func generateReport(pods []*corev1.Pod, status pkg.Status) *CapacityEstimationReview {
 	return &CapacityEstimationReview{
 		Spec:   getReviewSpec(pods),
 		Status: getReviewStatus(pods, status),
@@ -145,7 +145,7 @@ func getMainStopReason(message string) *CapacityEstimationReviewScheduleStopReas
 	return reason
 }
 
-func parsePodsReview(templatePods []*corev1.Pod, status pkgframework.Status) []*CapacityEstimationReviewResult {
+func parsePodsReview(templatePods []*corev1.Pod, status pkg.Status) []*CapacityEstimationReviewResult {
 	templatesCount := len(templatePods)
 	result := make([]*CapacityEstimationReviewResult, 0)
 
@@ -190,7 +190,7 @@ func getReviewSpec(podTemplates []*corev1.Pod) CapacityEstimationReviewSpec {
 	}
 }
 
-func getReviewStatus(pods []*corev1.Pod, status pkgframework.Status) CapacityEstimationReviewStatus {
+func getReviewStatus(pods []*corev1.Pod, status pkg.Status) CapacityEstimationReviewStatus {
 	return CapacityEstimationReviewStatus{
 		CreationTimestamp: time.Now(),
 		Replicas:          int32(len(status.Pods)),
