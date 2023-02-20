@@ -20,6 +20,7 @@ const (
 
 type NodeFilter interface {
 	SelectNode() *Status
+	Done()
 }
 
 func defaultFilterFunc() FilterFunc {
@@ -54,8 +55,9 @@ func defaultFilterFunc() FilterFunc {
 }
 
 type singleNodeFilter struct {
-	clientset  clientset.Interface
-	nodeFilter FilterFunc
+	clientset     clientset.Interface
+	nodeFilter    FilterFunc
+	selectedCount int
 }
 
 type Status struct {
@@ -112,17 +114,31 @@ func (g *singleNodeFilter) SelectNode() *Status {
 	}
 
 	if len(selected) == 0 {
-		return convertFilterStatusesToStatus(statuses)
+		return convertFilterStatusesToStatus(statuses, g.selectedCount)
 	}
 
 	return &Status{Node: selected[0]}
 }
 
-func convertFilterStatusesToStatus(statuses []*FilterStatus) *Status {
+func (g *singleNodeFilter) Done() {
+	g.selectedCount++
+}
+
+func convertFilterStatusesToStatus(statuses []*FilterStatus, selectedCount int) *Status {
 	statusMap := make(map[string]int)
 
 	for _, status := range statuses {
 		statusMap[status.ErrReason]++
+	}
+
+	// for taint added by self
+	if count, ok := statusMap[ErrReasonTaintNode]; ok {
+		realCount := count - selectedCount
+		if realCount == 0 {
+			delete(statusMap, ErrReasonTaintNode)
+		} else {
+			statusMap[ErrReasonTaintNode] = realCount
+		}
 	}
 
 	sb := strings.Builder{}
