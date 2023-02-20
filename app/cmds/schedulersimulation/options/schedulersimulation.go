@@ -3,6 +3,8 @@ package options
 import (
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/k-cloud-labs/kluster-capacity/app/cmds"
 )
 
 const (
@@ -23,16 +25,10 @@ type Snapshot struct {
 }
 
 type SchedulerSimulationOptions struct {
-	SchedulerConfig string
-	KubeConfig      string
-	Snapshot        string
-	OutputFormat    string
-	Verbose         bool
-	SaveTo          string
+	cmds.Options
 	// Cluster, Snapshot
 	SourceFrom               string
 	ExitCondition            string
-	ExcludeNodes             []string
 	IgnorePodsOnExcludeNodes bool
 }
 
@@ -53,7 +49,7 @@ func NewSchedulerSimulationConfig(option *SchedulerSimulationOptions) *Scheduler
 
 func (s *SchedulerSimulationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeConfig, "kubeconfig", s.KubeConfig, "Path to the kubeconfig file to use for the analysis")
-	fs.StringVar(&s.SchedulerConfig, "scheduler-config", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration. Used when source-from is cluster")
+	fs.StringVar(&s.SchedulerConfig, "schedulerconfig", s.SchedulerConfig, "Path to JSON or YAML file containing scheduler configuration. Used when source-from is cluster")
 	fs.StringVarP(&s.OutputFormat, "output", "o", s.OutputFormat, "Output format. One of: json|yaml")
 	fs.StringSliceVar(&s.ExcludeNodes, "exclude-nodes", s.ExcludeNodes, "Exclude nodes to be scheduled")
 	fs.BoolVarP(&s.IgnorePodsOnExcludeNodes, "ignore-pods-on-excludes-nodes", "i", true, "Whether ignore the pods on the excludes nodes. By default true")

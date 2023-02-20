@@ -22,12 +22,10 @@ import (
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
-	corev1 "k8s.io/api/core/v1"
 	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation/options"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/capacityestimation"
 )
 
@@ -82,6 +80,10 @@ func validate(opt *options.CapacityEstimationOptions) error {
 		return errors.New("kubeconfig is missing")
 	}
 
+	if len(opt.SchedulerConfig) == 0 {
+		return errors.New("schedulerconfig is missing")
+	}
+
 	return nil
 }
 
@@ -105,47 +107,21 @@ func run(opt *options.CapacityEstimationOptions) error {
 	return nil
 }
 
-func runSimulator(conf *options.CapacityEstimationConfig) (framework.Printer, error) {
-	run := func(podTemplate *corev1.Pod) (framework.Printer, error) {
-		s, err := capacityestimation.NewCESimulatorExecutor(podTemplate,
-			conf.Options.SchedulerConfig,
-			conf.Options.KubeConfig,
-			conf.Options.MaxLimit,
-			conf.Options.ExcludeNodes)
-		if err != nil {
-			return nil, err
-		}
-
-		err = s.Initialize(conf.InitObjs...)
-		if err != nil {
-			return nil, err
-		}
-
-		err = s.Run()
-		if err != nil {
-			return nil, err
-		}
-
-		return s.Report(), nil
-	}
-
-	reports := capacityestimation.CapacityEstimationReviews{}
-	g := errgroup.Group{}
-	for _, pod := range conf.Pods {
-		copy := pod.DeepCopy()
-		g.Go(func() error {
-			report, err := run(copy)
-			if err != nil {
-				return err
-			}
-			reports = append(reports, report.(*capacityestimation.CapacityEstimationReview))
-			return nil
-		})
-	}
-	err := g.Wait()
+func runSimulator(conf *options.CapacityEstimationConfig) (pkg.Printer, error) {
+	s, err := capacityestimation.NewCESimulatorExecutor(conf)
 	if err != nil {
 		return nil, err
 	}
 
-	return reports, nil
+	err = s.Initialize(conf.InitObjs...)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	return s.Report(), nil
 }

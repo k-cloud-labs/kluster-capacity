@@ -12,24 +12,24 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/schedulersimulation/options"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
 type simulator struct {
-	framework.Simulator
+	pkg.Simulator
 
 	exitCondition string
-	saveTo        string
 }
 
-func NewSSSimulatorExecutor(schedulerCfg string, kubeCfg string, exitCondition string, saveTo string, excludeNodes []string) (framework.SimulatorExecutor, error) {
-	kubeSchedulerConfig, err := utils.BuildKubeSchedulerCompletedConfig(schedulerCfg)
+func NewSSSimulatorExecutor(conf *options.SchedulerSimulationConfig) (pkg.SimulatorExecutor, error) {
+	kubeSchedulerConfig, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig, conf.Options.KubeConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	kubeConfig, err := utils.BuildRestConfig(kubeCfg)
+	kubeConfig, err := utils.BuildRestConfig(conf.Options.KubeConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -37,16 +37,15 @@ func NewSSSimulatorExecutor(schedulerCfg string, kubeCfg string, exitCondition s
 	scheduler, err := framework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
 		framework.WithNodeImages(false),
 		framework.WithScheduledPods(false),
-		framework.WithExcludeNodes(excludeNodes),
-		framework.WithSaveTo(saveTo))
+		framework.WithExcludeNodes(conf.Options.ExcludeNodes),
+		framework.WithSaveTo(conf.Options.SaveTo))
 	if err != nil {
 		return nil, err
 	}
 
 	s := &simulator{
 		Simulator:     scheduler,
-		exitCondition: exitCondition,
-		saveTo:        saveTo,
+		exitCondition: conf.Options.ExitCondition,
 	}
 
 	err = s.addEventHandlers(kubeSchedulerConfig.InformerFactory)
@@ -61,7 +60,7 @@ func (s *simulator) Initialize(objs ...runtime.Object) error {
 	return s.InitTheWorld(objs...)
 }
 
-func (s *simulator) Report() framework.Printer {
+func (s *simulator) Report() pkg.Printer {
 	return generateReport(s.Status())
 }
 
@@ -121,7 +120,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 
 			if stop {
 				pods := allPods()
-				s.UpdateStatus(pods...)
+				s.UpdateScheduledPods(pods...)
 				err = s.Stop(fmt.Sprintf(reason, len(pods)))
 			}
 		},

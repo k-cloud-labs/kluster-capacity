@@ -6,7 +6,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
-	pkgframework "github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/utils"
 )
 
@@ -75,7 +75,7 @@ func getUnschedulableReason(pod *corev1.Pod) string {
 	return ""
 }
 
-func generateReport(status pkgframework.Status) *SchedulerSimulationReview {
+func generateReport(status pkg.Status) *SchedulerSimulationReview {
 	details := make([]ScheduleDetail, 0)
 	unschedulablePods := make([]*corev1.Pod, 0)
 	nodePodMap := make(map[string][]*corev1.Pod)

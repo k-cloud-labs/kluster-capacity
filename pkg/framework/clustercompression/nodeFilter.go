@@ -2,6 +2,8 @@ package clustercompression
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,34 +13,43 @@ import (
 )
 
 const (
-	NodeSkipLabel             = "kc.k-cloud-labs.io/node-skip"
+	NodeScaledDownFailedLabel = "kc.k-cloud-labs.io/node-scale-down-failed"
 	KubernetesMasterNodeLabel = "node-role.kubernetes.io/master"
 	NodeScaleDownDisableLabel = "kc.k-cloud-labs.io/scale-down-disabled"
 )
 
 type NodeFilter interface {
-	SelectNode() *corev1.Node
+	SelectNode() *Status
 }
 
 func defaultFilterFunc() FilterFunc {
-	return func(node *corev1.Node) bool {
+	return func(node *corev1.Node) *FilterStatus {
 		if node.Labels != nil {
-			_, ok := node.Labels[NodeSkipLabel]
+			_, ok := node.Labels[KubernetesMasterNodeLabel]
 			if ok {
-				return false
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonMasterNode,
+				}
 			}
 
-			_, ok = node.Labels[KubernetesMasterNodeLabel]
+			_, ok = node.Labels[NodeScaledDownFailedLabel]
 			if ok {
-				return false
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonFailedScaleDown,
+				}
 			}
 
 			v, ok := node.Labels[NodeScaleDownDisableLabel]
 			if ok && v == "true" {
-				return false
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonScaleDownDisabled,
+				}
 			}
 		}
-		return true
+		return &FilterStatus{Success: true}
 	}
 }
 
@@ -47,7 +58,12 @@ type singleNodeFilter struct {
 	nodeFilter FilterFunc
 }
 
-func NewNodeFilter(s *simulator, excludeNodes []string, filterNodeOptions options.FilterNodeOptions) (NodeFilter, error) {
+type Status struct {
+	Node      *corev1.Node
+	ErrReason string
+}
+
+func NewNodeFilter(client clientset.Interface, getPodsByNode PodsByNodeFunc, excludeNodes []string, filterNodeOptions options.FilterNodeOptions) (NodeFilter, error) {
 	excludeNodeMap := make(map[string]bool)
 	for i := range excludeNodes {
 		excludeNodeMap[excludeNodes[i]] = true
@@ -55,24 +71,27 @@ func NewNodeFilter(s *simulator, excludeNodes []string, filterNodeOptions option
 
 	nodeFilter := NewOptions().
 		WithFilter(defaultFilterFunc()).
-		WithoutNodes(excludeNodeMap).
-		WithoutTaint(filterNodeOptions.ExcludeTaintNode).
-		WithoutNotReady(filterNodeOptions.ExcludeNotReadyNode).
+		WithExcludeNodes(excludeNodeMap).
+		WithExcludeTaintNodes(filterNodeOptions.ExcludeTaintNode).
+		WithExcludeNotReadyNodes(filterNodeOptions.ExcludeNotReadyNode).
 		WithIgnoreStaticPod(filterNodeOptions.IgnoreStaticPod).
 		WithIgnoreCloneSet(filterNodeOptions.IgnoreCloneSet).
 		WithIgnoreMirrorPod(filterNodeOptions.IgnoreMirrorPod).
 		WithIgnoreVolumePod(filterNodeOptions.IgnoreVolumePod).
-		WithSimulator(s).
+		WithPodsByNodeFunc(getPodsByNode).
 		BuildFilterFunc()
 
 	return &singleNodeFilter{
-		clientset:  s.fakeClient,
+		clientset:  client,
 		nodeFilter: nodeFilter,
 	}, nil
 }
 
-func (g *singleNodeFilter) SelectNode() *corev1.Node {
-	res := []*corev1.Node{}
+func (g *singleNodeFilter) SelectNode() *Status {
+	var (
+		selected []*corev1.Node
+		statuses []*FilterStatus
+	)
 
 	var nodeList []*corev1.Node
 	nodes, err := g.clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
@@ -84,14 +103,32 @@ func (g *singleNodeFilter) SelectNode() *corev1.Node {
 		nodeList = append(nodeList, &nodes.Items[i])
 	}
 	for _, v := range nodeList {
-		if g.nodeFilter(v) {
-			res = append(res, v)
+		status := g.nodeFilter(v)
+		if status.Success {
+			selected = append(selected, v)
+		} else {
+			statuses = append(statuses, status)
 		}
 	}
 
-	if len(res) == 0 {
-		return nil
+	if len(selected) == 0 {
+		return convertFilterStatusesToStatus(statuses)
 	}
 
-	return res[0]
+	return &Status{Node: selected[0]}
+}
+
+func convertFilterStatusesToStatus(statuses []*FilterStatus) *Status {
+	statusMap := make(map[string]int)
+
+	for _, status := range statuses {
+		statusMap[status.ErrReason]++
+	}
+
+	sb := strings.Builder{}
+	for reason, count := range statusMap {
+		_, _ = sb.WriteString(fmt.Sprintf("%d %s; ", count, reason))
+	}
+
+	return &Status{ErrReason: sb.String()}
 }

@@ -25,7 +25,7 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/schedulersimulation/options"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework"
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/schedulersimulation"
 )
 
@@ -76,6 +76,14 @@ func validate(opt *options.SchedulerSimulationOptions) error {
 		return errors.New("snapshot must be specified when source-from is snapshot")
 	}
 
+	if len(opt.KubeConfig) == 0 {
+		return errors.New("kubeconfig is missing")
+	}
+
+	if len(opt.SchedulerConfig) == 0 {
+		return errors.New("schedulerconfig is missing")
+	}
+
 	return nil
 }
 
@@ -98,8 +106,8 @@ func run(opt *options.SchedulerSimulationOptions) error {
 	return nil
 }
 
-func runSimulator(conf *options.SchedulerSimulationConfig) (framework.Printer, error) {
-	s, err := schedulersimulation.NewSSSimulatorExecutor(conf.Options.SchedulerConfig, conf.Options.KubeConfig, conf.Options.ExitCondition, conf.Options.SaveTo, conf.Options.ExcludeNodes)
+func runSimulator(conf *options.SchedulerSimulationConfig) (pkg.Printer, error) {
+	s, err := schedulersimulation.NewSSSimulatorExecutor(conf)
 	if err != nil {
 		return nil, err
 	}
