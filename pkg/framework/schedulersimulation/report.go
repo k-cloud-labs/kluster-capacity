@@ -38,7 +38,7 @@ func (r *SchedulerSimulationReview) Print(verbose bool, format string) error {
 }
 
 func prettyPrint(r *SchedulerSimulationReview, verbose bool) {
-	fmt.Printf("TerminationReason: %s\n\n", r.StopReason)
+	fmt.Printf("Termination reason: %s\n\n", r.StopReason)
 	if len(r.UnschedulablePods) > 0 {
 		fmt.Printf("Unschedulabel pods(%d):\n", len(r.UnschedulablePods))
 	}
@@ -58,9 +58,9 @@ func prettyPrint(r *SchedulerSimulationReview, verbose bool) {
 
 	for _, detail := range r.Details {
 		if verbose {
-			fmt.Printf("- %v: %v instance(s), allocatable: %v, requested: %v\n", detail.NodeName, detail.Replicas, detail.NodeAllocatable, detail.PodRequest)
+			fmt.Printf("\t- %v: %v instance(s), allocatable: %v, requested: %v\n", detail.NodeName, detail.Replicas, detail.NodeAllocatable, detail.PodRequest)
 		} else {
-			fmt.Printf("- %v: %v instance(s)\n", detail.NodeName, detail.Replicas)
+			fmt.Printf("\t- %v: %v instance(s)\n", detail.NodeName, detail.Replicas)
 		}
 	}
 }
