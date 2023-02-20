@@ -76,7 +76,7 @@ func validate(opt *options.SchedulerSimulationOptions) error {
 		return errors.New("snapshot must be specified when source-from is snapshot")
 	}
 
-	if opt.ExitCondition != options.ExitWhenAllSucceed || opt.ExitCondition != options.ExitWhenAllSucceed {
+	if opt.ExitCondition != options.ExitWhenAllSucceed && opt.ExitCondition != options.ExitWhenAllScheduled {
 		return errors.New("exit condition must be AllSucceed or AllScheduled")
 	}
 
