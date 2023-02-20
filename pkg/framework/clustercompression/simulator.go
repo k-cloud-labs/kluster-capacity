@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,9 +29,9 @@ type simulator struct {
 	simulated                int
 	fakeClient               clientset.Interface
 	createdPods              []*corev1.Pod
+	createPodIndex           int
 	currentNode              string
 	currentNodeUnschedulable bool
-	mux                      sync.Mutex
 	bindSuccessPodCount      int
 	nodeFilter               NodeFilter
 }
@@ -53,7 +52,7 @@ func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.Simulat
 	s := &simulator{
 		simulated:           0,
 		bindSuccessPodCount: 0,
-		createdPods:         []*corev1.Pod{},
+		createPodIndex:      0,
 		maxSimulated:        conf.Options.MaxLimit,
 	}
 
@@ -93,8 +92,8 @@ func (s *simulator) Initialize(objs ...runtime.Object) error {
 }
 
 func (s *simulator) Report() pkg.Printer {
-	klog.V(4).Infof("the following nodes can be offline to save resources: %v", s.Status().NodesToScaleDown)
-	klog.V(4).Infof("the clusterCompression StopReason: %s", s.Status().StopReason)
+	klog.V(2).Infof("the following nodes can be offline to save resources: %v", s.Status().NodesToScaleDown)
+	klog.V(2).Infof("the clusterCompression StopReason: %s", s.Status().StopReason)
 	return generateReport(s.Status())
 }
 
@@ -107,36 +106,23 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 		return s.Stop(fmt.Sprintf("LimitReached: maximum number of nodes simulated: %v", s.maxSimulated))
 	}
 
-	s.mux.Lock()
-	defer s.mux.Unlock()
 	s.bindSuccessPodCount++
-
-	var flag bool
-	podList := s.createdPods
-	for i := range podList {
-		p, err := s.fakeClient.CoreV1().Pods(podList[i].Namespace).Get(context.TODO(), podList[i].Name, metav1.GetOptions{})
+	if len(s.createdPods) > 0 && s.createPodIndex < len(s.createdPods) {
+		klog.V(2).Infof("create %d pod: %s", s.createPodIndex, s.createdPods[s.createPodIndex].Namespace+"/"+s.createdPods[s.createPodIndex].Name)
+		_, err := s.fakeClient.CoreV1().Pods(s.createdPods[s.createPodIndex].Namespace).Create(context.TODO(), utils.InitPod(s.createdPods[s.createPodIndex]), metav1.CreateOptions{})
 		if err != nil {
 			return err
 		}
-		if p.Spec.NodeName == "" {
-			flag = true
-			break
-		}
-	}
+		s.createPodIndex++
+	} else if s.bindSuccessPodCount == len(s.createdPods) {
+		klog.V(2).Infof("add node %s to simulator status", s.currentNode)
+		s.UpdateNodesToScaleDown(s.currentNode)
+		s.simulated++
+		s.nodeFilter.Done()
 
-	if len(podList) > 0 && !flag && s.currentNode != "" {
-		if s.bindSuccessPodCount == len(s.createdPods) {
-			klog.V(4).Infof("add node %s to simulator status", s.currentNode)
-			s.UpdateNodesToScaleDown(s.currentNode)
-			s.createdPods = nil
-			s.currentNode = ""
-			s.simulated++
-			s.nodeFilter.Done()
-
-			err := s.selectNextNode()
-			if err != nil {
-				return s.Stop(fmt.Sprintf("%s, %s", FailedSelectNode, err.Error()))
-			}
+		err := s.selectNextNode()
+		if err != nil {
+			return s.Stop(fmt.Sprintf("%s, %s", FailedSelectNode, err.Error()))
 		}
 	}
 
@@ -149,9 +135,11 @@ func (s *simulator) selectNextNode() error {
 		return errors.New(status.ErrReason)
 	}
 	node := status.Node
-	klog.V(4).Infof("select node %s to simulate\n", node.Name)
+	klog.V(2).Infof("select node %s to simulate\n", node.Name)
 
+	s.createdPods = nil
 	s.bindSuccessPodCount = 0
+	s.createPodIndex = 0
 	s.currentNode = node.Name
 	s.currentNodeUnschedulable = node.Spec.Unschedulable
 
@@ -160,9 +148,19 @@ func (s *simulator) selectNextNode() error {
 		return err
 	}
 
-	err = s.createPodsByNode(node)
+	err = s.deletePodsByNode(node)
 	if err != nil {
 		return err
+	}
+	klog.V(2).Infof("node %s needs to create %d pods\n", node.Name, len(s.createdPods))
+
+	if len(s.createdPods) > 0 {
+		_, err = s.fakeClient.CoreV1().Pods(s.createdPods[s.createPodIndex].Namespace).Create(context.TODO(), utils.InitPod(s.createdPods[s.createPodIndex]), metav1.CreateOptions{})
+		klog.V(2).Infof("create %d pod: %s", s.createPodIndex, s.createdPods[s.createPodIndex].Namespace+"/"+s.createdPods[s.createPodIndex].Name)
+		if err != nil {
+			return err
+		}
+		s.createPodIndex++
 	}
 
 	return nil
@@ -194,7 +192,7 @@ func (s *simulator) cordon(node *corev1.Node) error {
 	if err != nil {
 		return err
 	}
-	klog.V(4).Infof("cordon node %s successfully\n", node.Name)
+	klog.V(2).Infof("cordon node %s successfully\n", node.Name)
 	return nil
 }
 
@@ -218,7 +216,7 @@ func (s *simulator) unCordon(nodeName string) error {
 	if err != nil {
 		return err
 	}
-	klog.V(4).Infof("unCordon node %s successfully\n", nodeName)
+	klog.V(2).Infof("unCordon node %s successfully\n", nodeName)
 	return nil
 
 }
@@ -236,28 +234,27 @@ func (s *simulator) addLabelToNode(nodeName string, labelKey string, labelValue 
 	if err != nil {
 		return err
 	}
-	klog.V(4).Infof("add node %s failed scale down label successfully\n", node.Name)
+	klog.V(2).Infof("add node %s failed scale down label successfully\n", node.Name)
 	return nil
 }
 
 func (s *simulator) updatePodsFromCreatedPods() error {
 	podList := s.createdPods
-	for i := range podList {
-		err := s.fakeClient.CoreV1().Pods(podList[i].Namespace).Delete(context.TODO(), podList[i].Name, metav1.DeleteOptions{})
+	for index := s.createPodIndex; index >= 0; index-- {
+		err := s.fakeClient.CoreV1().Pods(podList[index].Namespace).Delete(context.TODO(), podList[index].Name, metav1.DeleteOptions{})
 		if err != nil {
 			return err
 		}
-		_, err = s.fakeClient.CoreV1().Pods(podList[i].Namespace).Create(context.TODO(), podList[i], metav1.CreateOptions{})
+		_, err = s.fakeClient.CoreV1().Pods(podList[index].Namespace).Create(context.TODO(), podList[index], metav1.CreateOptions{})
 		if err != nil {
 			return err
 		}
 	}
 
-	s.createdPods = nil
 	return nil
 }
 
-func (s *simulator) createPodsByNode(node *corev1.Node) error {
+func (s *simulator) deletePodsByNode(node *corev1.Node) error {
 	podList, err := s.getPodsByNode(node)
 	if err != nil {
 		return err
@@ -266,14 +263,9 @@ func (s *simulator) createPodsByNode(node *corev1.Node) error {
 	var createdPods []*corev1.Pod
 	for i := range podList {
 		if podList[i].Status.Phase != corev1.PodSucceeded && podList[i].Status.Phase != corev1.PodFailed &&
-			(len(podList[i].OwnerReferences) == 0 || podList[i].OwnerReferences[0].Kind != "DaemonSet") {
+			(len(podList[i].OwnerReferences) == 0 || podList[i].OwnerReferences[0].Kind != "DaemonSet") && !utils.IsPodTerminating(podList[i]) {
 			createdPods = append(createdPods, podList[i])
 			err := s.fakeClient.CoreV1().Pods(podList[i].Namespace).Delete(context.TODO(), podList[i].Name, metav1.DeleteOptions{})
-			if err != nil {
-				return err
-			}
-
-			_, err = s.fakeClient.CoreV1().Pods(podList[i].Namespace).Create(context.TODO(), utils.InitPod(podList[i]), metav1.CreateOptions{})
 			if err != nil {
 				return err
 			}
@@ -304,24 +296,22 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 								// 1. Empty all Pods created by fake before
 								// 2. Uncordon this node if needed
 								// 3. Type the flags that cannot be filtered, clear the flags that prohibit scheduling, add failed scale down label, then selectNextNode
-								klog.V(4).Infof("Failed scheduling pod %s, reason: %s, message: %s\n", pod.Namespace+"/"+pod.Name, podCondition.Reason, podCondition.Message)
+								klog.V(2).Infof("Failed scheduling pod %s, reason: %s, message: %s\n", pod.Namespace+"/"+pod.Name, podCondition.Reason, podCondition.Message)
 								err = s.updatePodsFromCreatedPods()
 								if err != nil {
 									err = s.Stop("FailedDeletePodsFromCreatedPods: " + err.Error())
 								}
 
-								if s.currentNode != "" {
-									if !s.currentNodeUnschedulable {
-										err = s.unCordon(s.currentNode)
-										if err != nil {
-											err = s.Stop("FailedUnCordon: " + err.Error())
-										}
-									}
-
-									err = s.addLabelToNode(s.currentNode, NodeScaledDownFailedLabel, "true")
+								if !s.currentNodeUnschedulable {
+									err = s.unCordon(s.currentNode)
 									if err != nil {
-										err = s.Stop("FailedAddLabelToNode: " + err.Error())
+										err = s.Stop("FailedUnCordon: " + err.Error())
 									}
+								}
+
+								err = s.addLabelToNode(s.currentNode, NodeScaledDownFailedLabel, "true")
+								if err != nil {
+									err = s.Stop("FailedAddLabelToNode: " + err.Error())
 								}
 
 								err = s.selectNextNode()
@@ -345,6 +335,6 @@ func (s *simulator) getPodsByNode(node *corev1.Node) ([]*corev1.Pod, error) {
 		return nil, err
 	}
 
-	klog.V(4).Infof("node %s has %d pods\n", node.Name, len(podList))
+	klog.V(2).Infof("node %s has %d pods\n", node.Name, len(podList))
 	return podList, nil
 }
