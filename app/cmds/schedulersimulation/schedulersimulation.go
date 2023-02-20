@@ -76,6 +76,10 @@ func validate(opt *options.SchedulerSimulationOptions) error {
 		return errors.New("snapshot must be specified when source-from is snapshot")
 	}
 
+	if opt.ExitCondition != options.ExitWhenAllSucceed || opt.ExitCondition != options.ExitWhenAllSucceed {
+		return errors.New("exit condition must be AllSucceed or AllScheduled")
+	}
+
 	if len(opt.KubeConfig) == 0 {
 		return errors.New("kubeconfig is missing")
 	}
