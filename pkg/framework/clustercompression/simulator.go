@@ -6,16 +6,13 @@ import (
 	"fmt"
 	"sync"
 
-	uuid "github.com/satori/go.uuid"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	apiv1 "k8s.io/kubernetes/pkg/apis/core/v1"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg"
@@ -134,6 +131,7 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 			s.createdPods = nil
 			s.currentNode = ""
 			s.simulated++
+			s.nodeFilter.Done()
 
 			err := s.selectNextNode()
 			if err != nil {
@@ -154,6 +152,8 @@ func (s *simulator) selectNextNode() error {
 	klog.V(4).Infof("select node %s to simulate\n", node.Name)
 
 	s.bindSuccessPodCount = 0
+	s.currentNode = node.Name
+	s.currentNodeUnschedulable = node.Spec.Unschedulable
 
 	err := s.cordon(node)
 	if err != nil {
@@ -165,8 +165,6 @@ func (s *simulator) selectNextNode() error {
 		return err
 	}
 
-	s.currentNode = node.Name
-	s.currentNodeUnschedulable = node.Spec.Unschedulable
 	return nil
 }
 
@@ -275,7 +273,7 @@ func (s *simulator) createPodsByNode(node *corev1.Node) error {
 				return err
 			}
 
-			_, err = s.fakeClient.CoreV1().Pods(podList[i].Namespace).Create(context.TODO(), initPod(podList[i]), metav1.CreateOptions{})
+			_, err = s.fakeClient.CoreV1().Pods(podList[i].Namespace).Create(context.TODO(), utils.InitPod(podList[i]), metav1.CreateOptions{})
 			if err != nil {
 				return err
 			}
@@ -349,30 +347,4 @@ func (s *simulator) getPodsByNode(node *corev1.Node) ([]*corev1.Pod, error) {
 
 	klog.V(4).Infof("node %s has %d pods\n", node.Name, len(podList))
 	return podList, nil
-
-}
-
-func initPod(input *corev1.Pod) *corev1.Pod {
-	podSpec := input.Spec.DeepCopy()
-	pod := &corev1.Pod{
-		Spec: *podSpec,
-	}
-	apiv1.SetObjectDefaults_Pod(pod)
-
-	// reset pod
-	pod.Spec.NodeName = ""
-	pod.Spec.SchedulerName = pkg.SchedulerName
-	pod.Status = corev1.PodStatus{}
-
-	// use simulated pod name with an index to construct the name
-	pod.ObjectMeta.Name = input.Name
-	pod.ObjectMeta.Namespace = input.Namespace
-	pod.ObjectMeta.UID = types.UID(uuid.NewV4().String())
-	// Add pod provisioner annotation
-	if pod.ObjectMeta.Annotations == nil {
-		pod.ObjectMeta.Annotations = map[string]string{}
-	}
-	pod.ObjectMeta.Annotations[pkg.PodProvisioner] = pkg.SchedulerName
-
-	return pod
 }
