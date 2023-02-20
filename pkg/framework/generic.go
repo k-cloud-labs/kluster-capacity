@@ -432,7 +432,7 @@ func (s *genericSimulator) preAdd(obj runtime.Object) (bool, runtime.Object) {
 			}
 		}
 
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed || pod.DeletionTimestamp != nil {
 			return false, nil
 		}
 		if !s.withScheduledPods {
