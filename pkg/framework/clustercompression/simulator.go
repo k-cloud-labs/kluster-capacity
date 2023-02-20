@@ -240,7 +240,7 @@ func (s *simulator) addLabelToNode(nodeName string, labelKey string, labelValue 
 
 func (s *simulator) updatePodsFromCreatedPods() error {
 	podList := s.createdPods
-	for index := s.createPodIndex; index >= 0; index-- {
+	for index := s.createPodIndex - 1; index >= 0; index-- {
 		err := s.fakeClient.CoreV1().Pods(podList[index].Namespace).Delete(context.TODO(), podList[index].Name, metav1.DeleteOptions{})
 		if err != nil {
 			return err
@@ -262,8 +262,7 @@ func (s *simulator) deletePodsByNode(node *corev1.Node) error {
 
 	var createdPods []*corev1.Pod
 	for i := range podList {
-		if podList[i].Status.Phase != corev1.PodSucceeded && podList[i].Status.Phase != corev1.PodFailed &&
-			(len(podList[i].OwnerReferences) == 0 || podList[i].OwnerReferences[0].Kind != "DaemonSet") && !utils.IsPodTerminating(podList[i]) {
+		if len(podList[i].OwnerReferences) == 0 || podList[i].OwnerReferences[0].Kind != "DaemonSet" {
 			createdPods = append(createdPods, podList[i])
 			err := s.fakeClient.CoreV1().Pods(podList[i].Namespace).Delete(context.TODO(), podList[i].Name, metav1.DeleteOptions{})
 			if err != nil {
