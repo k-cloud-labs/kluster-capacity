@@ -365,13 +365,16 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	if cc.ComponentConfig.Profiles[0].Plugins.PostBind == nil {
 		cc.ComponentConfig.Profiles[0].Plugins.PostBind = &kubeschedulerconfig.PluginSet{}
 	}
+	if cc.ComponentConfig.Profiles[0].Plugins.PostFilter == nil {
+		cc.ComponentConfig.Profiles[0].Plugins.PostFilter = &kubeschedulerconfig.PluginSet{}
+	}
 
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled, kubeschedulerconfig.Plugin{Name: volumebinding.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled, kubeschedulerconfig.Plugin{Name: defaultbinder.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
-	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled, kubeschedulerconfig.Plugin{Name: defaultpreemption.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled, kubeschedulerconfig.Plugin{Name: defaultpreemption.Name})
 
 	// custom bind plugin
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, s.customPreBind.Enabled...)
