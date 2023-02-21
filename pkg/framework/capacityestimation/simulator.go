@@ -168,7 +168,7 @@ func (s *simulator) createNextPod() error {
 }
 
 func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) (err error) {
-	_, _ = informerFactory.Core().V1().Pods().Informer().AddEventHandler(
+	informerFactory.Core().V1().Pods().Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				if pod, ok := obj.(*corev1.Pod); ok && pod.Spec.SchedulerName == pkg.SchedulerName &&

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	resourcev1alpha1 "k8s.io/api/resource/v1alpha1"
 	storagev1 "k8s.io/api/storage/v1"
+	storagev1alpha1 "k8s.io/api/storage/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,19 +19,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -66,21 +63,7 @@ var (
 		storagev1.SchemeGroupVersion.WithKind("StorageClass"):       func() runtime.Object { return &storagev1.StorageClass{} },
 		storagev1.SchemeGroupVersion.WithKind("CSINode"):            func() runtime.Object { return &storagev1.CSINode{} },
 		storagev1.SchemeGroupVersion.WithKind("CSIDriver"):          func() runtime.Object { return &storagev1.CSIDriver{} },
-		storagev1.SchemeGroupVersion.WithKind("CSIStorageCapacity"): func() runtime.Object { return &storagev1.CSIStorageCapacity{} },
-		resourcev1alpha1.SchemeGroupVersion.WithKind("PodScheduling"): func() runtime.Object {
-			if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
-				return &resourcev1alpha1.PodScheduling{}
-			}
-
-			return nil
-		},
-		resourcev1alpha1.SchemeGroupVersion.WithKind("ResourceClaim"): func() runtime.Object {
-			if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
-				return &resourcev1alpha1.ResourceClaim{}
-			}
-
-			return nil
-		},
+		storagev1.SchemeGroupVersion.WithKind("CSIStorageCapacity"): func() runtime.Object { return &storagev1alpha1.CSIStorageCapacity{} },
 	}
 	once        sync.Once
 	initObjects []runtime.Object
@@ -91,15 +74,13 @@ type genericSimulator struct {
 	fakeClient clientset.Interface
 	// fake informer factory used by scheduler
 	fakeInformerFactory informers.SharedInformerFactory
-	// TODO: follow kubernetes master branch code
-	dynInformerFactory dynamicinformer.DynamicSharedInformerFactory
-	restMapper         meta.RESTMapper
+	restMapper          meta.RESTMapper
 	// real dynamic client to init the world
-	dynamicClient *dynamic.DynamicClient
+	dynamicClient dynamic.Interface
 
 	// scheduler
 	scheduler                *scheduler.Scheduler
-	excludeNodes             sets.Set[string]
+	excludeNodes             sets.String
 	withScheduledPods        bool
 	withNodeImages           bool
 	ignorePodsOnExcludesNode bool
@@ -129,7 +110,7 @@ type Option func(*genericSimulator)
 
 func WithExcludeNodes(excludeNodes []string) Option {
 	return func(s *genericSimulator) {
-		s.excludeNodes = sets.New[string](excludeNodes...)
+		s.excludeNodes = sets.NewString(excludeNodes...)
 	}
 }
 
@@ -220,12 +201,6 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 		option(s)
 	}
 
-	// only for latest k8s version
-	if restConfig != nil {
-		dynClient := dynamic.NewForConfigOrDie(restConfig)
-		s.dynInformerFactory = dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynClient, 0, corev1.NamespaceAll, nil)
-	}
-
 	scheduler, err := s.createScheduler(kubeSchedulerConfig)
 	if err != nil {
 		return nil, err
@@ -234,15 +209,12 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 	s.scheduler = scheduler
 
 	s.fakeInformerFactory.Start(s.informerCh)
-	if s.dynInformerFactory != nil {
-		s.dynInformerFactory.Start(s.informerCh)
-	}
 
 	return s, nil
 }
 
 func (s *genericSimulator) GetPodsByNode(nodeName string) ([]*corev1.Pod, error) {
-	dump := s.scheduler.Cache.Dump()
+	dump := s.scheduler.SchedulerCache.Dump()
 	var res []*corev1.Pod
 	if dump != nil && dump.Nodes[nodeName] != nil {
 		podInfos := dump.Nodes[nodeName].Pods
@@ -271,7 +243,7 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 				return err
 			}
 			if needAdd, obj := s.preAdd(obj); needAdd {
-				if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
+				if err := s.fakeClient.(*fake.Clientset).Tracker().Add(obj); err != nil {
 					return err
 				}
 			}
@@ -282,7 +254,7 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 				return errors.New("type of objs used to init the world must not be unstructured")
 			}
 			if needAdd, obj := s.preAdd(obj); needAdd {
-				if err := s.fakeClient.(testing.FakeClient).Tracker().Add(obj); err != nil {
+				if err := s.fakeClient.(*fake.Clientset).Tracker().Add(obj); err != nil {
 					return err
 				}
 			}
@@ -359,9 +331,7 @@ func (s *genericSimulator) CreatePod(pod *corev1.Pod) error {
 func (s *genericSimulator) Run() error {
 	// wait for all informer cache synced
 	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
-	if s.dynInformerFactory != nil {
-		s.dynInformerFactory.WaitForCacheSync(s.informerCh)
-	}
+
 	go s.scheduler.Run(context.TODO())
 
 	<-s.stopCh
@@ -386,12 +356,22 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 		return nil, err
 	}
 
+	if cc.ComponentConfig.Profiles[0].Plugins.PreBind == nil {
+		cc.ComponentConfig.Profiles[0].Plugins.PreBind = &kubeschedulerconfig.PluginSet{}
+	}
+	if cc.ComponentConfig.Profiles[0].Plugins.Bind == nil {
+		cc.ComponentConfig.Profiles[0].Plugins.Bind = &kubeschedulerconfig.PluginSet{}
+	}
+	if cc.ComponentConfig.Profiles[0].Plugins.PostBind == nil {
+		cc.ComponentConfig.Profiles[0].Plugins.PostBind = &kubeschedulerconfig.PluginSet{}
+	}
+
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Disabled, kubeschedulerconfig.Plugin{Name: volumebinding.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled, kubeschedulerconfig.Plugin{Name: defaultbinder.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
-	cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled, kubeschedulerconfig.Plugin{Name: defaultpreemption.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled, kubeschedulerconfig.Plugin{Name: defaultpreemption.Name})
 
 	// custom bind plugin
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, s.customPreBind.Enabled...)
@@ -405,11 +385,8 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	return scheduler.New(
 		s.fakeClient,
 		s.fakeInformerFactory,
-		s.dynInformerFactory,
 		getRecorderFactory(cc),
 		s.schedulerCh,
-		scheduler.WithComponentConfigVersion(cc.ComponentConfig.TypeMeta.APIVersion),
-		scheduler.WithKubeConfig(cc.KubeConfig),
 		scheduler.WithProfiles(cc.ComponentConfig.Profiles...),
 		scheduler.WithPercentageOfNodesToScore(cc.ComponentConfig.PercentageOfNodesToScore),
 		scheduler.WithFrameworkOutOfTreeRegistry(s.outOfTreeRegistry),

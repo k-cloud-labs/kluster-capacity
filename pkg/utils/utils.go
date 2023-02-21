@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	configv1alpha1 "k8s.io/component-base/config/v1alpha1"
 	"k8s.io/component-base/logs"
-	kubeschedulerconfigv1 "k8s.io/kube-scheduler/config/v1"
+	kubeschedulerconfigv1 "k8s.io/kube-scheduler/config/v1beta1"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	kubescheduleroptions "k8s.io/kubernetes/cmd/kube-scheduler/app/options"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -55,8 +55,8 @@ func BuildKubeSchedulerCompletedConfig(config, kubeconfig string) (*schedconfig.
 		if err != nil {
 			return nil, err
 		}
-		if err := validation.ValidateKubeSchedulerConfiguration(cfg); err != nil {
-			return nil, err
+		if err := validation.ValidateKubeSchedulerConfiguration(cfg); len(err) > 0 {
+			return nil, err.ToAggregate()
 		}
 		kcfg = cfg
 	}
@@ -135,7 +135,7 @@ func buildKubeSchedulerCompletedConfig(kcfg *kubeschedulerconfig.KubeSchedulerCo
 	}
 
 	opts := &kubescheduleroptions.Options{
-		ComponentConfig: kcfg,
+		ComponentConfig: *kcfg,
 		Logs:            logs.NewOptions(),
 	}
 

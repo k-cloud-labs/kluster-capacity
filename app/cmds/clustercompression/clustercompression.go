@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
@@ -60,6 +61,9 @@ func NewClusterCompressionCmd() *cobra.Command {
 		},
 	}
 
+	if flag.CommandLine.Lookup("log_dir") != nil {
+		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	}
 	klog.InitFlags(nil)
 	flag.Parse()
 
