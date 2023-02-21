@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	configv1alpha1 "k8s.io/component-base/config/v1alpha1"
 	"k8s.io/component-base/logs"
-	kubeschedulerconfigv1 "k8s.io/kube-scheduler/config/v1beta1"
+	kubeschedulerconfigv1beta1 "k8s.io/kube-scheduler/config/v1beta1"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	kubescheduleroptions "k8s.io/kubernetes/cmd/kube-scheduler/app/options"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -124,7 +124,7 @@ func ComputePodResourceRequest(pod *corev1.Pod) *framework.Resource {
 func buildKubeSchedulerCompletedConfig(kcfg *kubeschedulerconfig.KubeSchedulerConfiguration) (*schedconfig.CompletedConfig, error) {
 	if kcfg == nil {
 		kcfg = &kubeschedulerconfig.KubeSchedulerConfiguration{}
-		versionedCfg := kubeschedulerconfigv1.KubeSchedulerConfiguration{}
+		versionedCfg := kubeschedulerconfigv1beta1.KubeSchedulerConfiguration{}
 		versionedCfg.DebuggingConfiguration = *configv1alpha1.NewRecommendedDebuggingConfiguration()
 
 		kubeschedulerscheme.Scheme.Default(&versionedCfg)
