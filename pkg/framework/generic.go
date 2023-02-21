@@ -391,7 +391,7 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.Bind.Disabled, kubeschedulerconfig.Plugin{Name: defaultbinder.Name})
 	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Enabled, kubeschedulerconfig.Plugin{Name: generic.Name})
-	cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostFilter.Disabled, kubeschedulerconfig.Plugin{Name: defaultpreemption.Name})
+	cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled = append(cc.ComponentConfig.Profiles[0].Plugins.PostBind.Disabled, kubeschedulerconfig.Plugin{Name: defaultpreemption.Name})
 
 	// custom bind plugin
 	cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled = append(cc.ComponentConfig.Profiles[0].Plugins.PreBind.Enabled, s.customPreBind.Enabled...)
