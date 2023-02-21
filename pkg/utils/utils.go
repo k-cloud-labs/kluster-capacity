@@ -25,6 +25,11 @@ import (
 	"github.com/k-cloud-labs/kluster-capacity/pkg"
 )
 
+const (
+	DefaultQPS   = 10000
+	DefaultBurst = 20000
+)
+
 func BuildRestConfig(config string) (*restclient.Config, error) {
 	if len(config) != 0 {
 		master, err := getMasterFromKubeConfig(config)
@@ -37,12 +42,18 @@ func BuildRestConfig(config string) (*restclient.Config, error) {
 			return nil, fmt.Errorf("unable to build config: %v", err)
 		}
 
+		cfg.QPS = DefaultQPS
+		cfg.Burst = DefaultBurst
+
 		return cfg, nil
 	} else {
 		cfg, err := restclient.InClusterConfig()
 		if err != nil {
 			return nil, fmt.Errorf("unable to build in cluster config: %v", err)
 		}
+
+		cfg.QPS = DefaultQPS
+		cfg.Burst = DefaultBurst
 
 		return cfg, nil
 	}
