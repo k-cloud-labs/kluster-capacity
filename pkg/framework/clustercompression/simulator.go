@@ -262,7 +262,7 @@ func (s *simulator) deletePodsByNode(node *corev1.Node) error {
 
 	var createdPods []*corev1.Pod
 	for i := range podList {
-		if len(podList[i].OwnerReferences) == 0 || podList[i].OwnerReferences[0].Kind != "DaemonSet" {
+		if !utils.IsDaemonsetPod(podList[i].OwnerReferences) {
 			createdPods = append(createdPods, podList[i])
 			err := s.fakeClient.CoreV1().Pods(podList[i].Namespace).Delete(context.TODO(), podList[i].Name, metav1.DeleteOptions{})
 			if err != nil {

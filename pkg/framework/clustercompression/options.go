@@ -139,7 +139,7 @@ func (o *Options) BuildFilterFunc() FilterFunc {
 		}
 
 		for i := range podList {
-			if o.ignoreMirrorPod && utils.IsStaticPod(podList[i]) {
+			if o.ignoreStaticPod && utils.IsStaticPod(podList[i]) {
 				return &FilterStatus{
 					Success:   false,
 					ErrReason: ErrReasonStaticPod,
