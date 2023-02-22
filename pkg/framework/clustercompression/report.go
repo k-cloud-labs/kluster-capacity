@@ -78,6 +78,7 @@ func clusterCapacityReviewDefaultPrint(r *ClusterCompressionReview, verbose bool
 		}
 	} else {
 		fmt.Println("No nodes in the cluster can be scaled down.")
+		fmt.Printf("\nTermination reason: %v: %v\n", r.Status.StopReason.StopType, r.Status.StopReason.StopMessage)
 	}
 
 	return nil
