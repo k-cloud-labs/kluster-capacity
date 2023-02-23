@@ -17,6 +17,7 @@ require (
 	k8s.io/client-go v0.20.15
 	k8s.io/component-base v0.20.15
 	k8s.io/klog/v2 v2.4.0
+	k8s.io/kube-scheduler v0.20.15
 	k8s.io/kubernetes v1.20.15
 	sigs.k8s.io/controller-runtime v0.8.3
 )
@@ -100,7 +101,6 @@ require (
 	k8s.io/component-helpers v0.20.15 // indirect
 	k8s.io/csi-translation-lib v0.20.15 // indirect
 	k8s.io/kube-openapi v0.0.0 // indirect
-	k8s.io/kube-scheduler v0.20.15 // indirect
 	k8s.io/mount-utils v0.20.15 // indirect
 	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.22 // indirect
