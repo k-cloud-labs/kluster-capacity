@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Check labels and add size label
-        uses: actions/github-script@v4
+        uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
