@@ -1,4 +1,4 @@
-name: Check Labels and Add Size Label
+name: Check Label
 
 on:
   issues:
@@ -7,29 +7,18 @@ on:
     types: [opened, edited]
 
 jobs:
-  check-labels:
+  check-label:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check labels and add size label
-        uses: actions/github-script@v6
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const labels = ['bug', 'enhancement', 'documentation', 'duplicate', 'good first issue', 'help wanted', 'invalid', 'question', 'wontfix'];
-            const sizeLabels = ['size/XS', 'size/S', 'size/M', 'size/L', 'size/XL'];
-            const issue = context.issue;
-            const issueLabels = await github.issues.listLabelsOnIssue({ ...issue });
-            const hasAllLabels = labels.every(label => issueLabels.data.find(item => item.name === label));
-            if (!hasAllLabels) {
-              const prComment = `Hey @${context.payload.sender.login}, please add the following labels to this PR: ${labels.join(', ')}`;
-              await github.issues.createComment({ ...issue, body: prComment });
-            }
-            if (issue.pull_request) {
-              const { data: pullRequest } = await github.pulls.get({ ...issue });
-              const size = Math.ceil(pullRequest.additions / 100) * 100;
-              const sizeLabel = sizeLabels.find(label => label.includes(size.toString()));
-              if (sizeLabel) {
-                await github.issues.addLabels({ ...issue, labels: [sizeLabel] });
-              }
-            }
+          python-version: 3.x
+      - name: Install dependencies
+        run: pip install PyGithub
+      - name: Check label
+        run: python check_label.py ${{ github.event_name }} ${{ github.event.issue.number }} ${{ github.event.pull_request.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
