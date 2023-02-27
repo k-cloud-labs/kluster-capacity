@@ -20,7 +20,7 @@ if sys.argv[1] == 'issues':
         issue.create_comment(message)
 
 if sys.argv[1] == 'pull_request':
-    pull_request_number = sys.argv[3]
+    pull_request_number = sys.argv[2]
     pull_request = repo.get_pull(int(pull_request_number))
     pull_request_labels = [label.name for label in pull_request.labels]
 
