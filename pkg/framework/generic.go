@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1alpha1 "k8s.io/api/storage/v1alpha1"
@@ -60,6 +61,10 @@ var (
 		corev1.SchemeGroupVersion.WithKind("Node"):                  func() runtime.Object { return &corev1.Node{} },
 		corev1.SchemeGroupVersion.WithKind("PersistentVolume"):      func() runtime.Object { return &corev1.PersistentVolume{} },
 		corev1.SchemeGroupVersion.WithKind("PersistentVolumeClaim"): func() runtime.Object { return &corev1.PersistentVolumeClaim{} },
+		corev1.SchemeGroupVersion.WithKind("Service"):               func() runtime.Object { return &corev1.Service{} },
+		corev1.SchemeGroupVersion.WithKind("ReplicationController"): func() runtime.Object { return &corev1.ReplicationController{} },
+		appsv1.SchemeGroupVersion.WithKind("StatefulSet"):           func() runtime.Object { return &appsv1.StatefulSet{} },
+		appsv1.SchemeGroupVersion.WithKind("ReplicaSet"):            func() runtime.Object { return &appsv1.ReplicaSet{} },
 		storagev1.SchemeGroupVersion.WithKind("StorageClass"):       func() runtime.Object { return &storagev1.StorageClass{} },
 		storagev1.SchemeGroupVersion.WithKind("CSINode"):            func() runtime.Object { return &storagev1.CSINode{} },
 		storagev1.SchemeGroupVersion.WithKind("CSIDriver"):          func() runtime.Object { return &storagev1.CSIDriver{} },
