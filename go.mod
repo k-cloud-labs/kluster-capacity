@@ -112,7 +112,7 @@ replace (
 	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.4.2
 	k8s.io/api => k8s.io/api v0.20.15
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.20.15
-	k8s.io/apimachinery => k8s.io/apimachinery v0.20.15
+	k8s.io/apimachinery => github.com/k-cloud-labs/apimachinery v0.21.0-alpha.0.0.20230224031514-e72841825a3d
 	k8s.io/apiserver => k8s.io/apiserver v0.20.15
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.20.15
 	k8s.io/client-go => k8s.io/client-go v0.20.15
