@@ -55,9 +55,11 @@ func defaultFilterFunc() FilterFunc {
 }
 
 type singleNodeFilter struct {
-	clientset     clientset.Interface
-	nodeFilter    FilterFunc
-	selectedCount int
+	clientset      clientset.Interface
+	nodeFilter     FilterFunc
+	selectedCount  int
+	candidateNode  []*corev1.Node
+	candidateIndex int
 }
 
 type Status struct {
@@ -90,34 +92,45 @@ func NewNodeFilter(client clientset.Interface, getPodsByNode PodsByNodeFunc, exc
 }
 
 func (g *singleNodeFilter) SelectNode() *Status {
-	var (
-		selected []*corev1.Node
-		statuses []*FilterStatus
-	)
+	if len(g.candidateNode) != 0 && g.candidateIndex <= len(g.candidateNode)-1 {
+		selectNode := g.candidateNode[g.candidateIndex]
+		g.candidateIndex++
+		if g.candidateIndex == len(g.candidateNode) {
+			g.candidateNode = nil
+			g.candidateIndex = 0
+		}
+		return &Status{Node: selectNode}
+	}
 
+	g.candidateNode = nil
+	g.candidateIndex = 0
+
+	var statuses []*FilterStatus
 	var nodeList []*corev1.Node
+
 	nodes, err := g.clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil
 	}
-
 	for i := range nodes.Items {
 		nodeList = append(nodeList, &nodes.Items[i])
 	}
 	for _, v := range nodeList {
 		status := g.nodeFilter(v)
 		if status.Success {
-			selected = append(selected, v)
+			g.candidateNode = append(g.candidateNode, v)
 		} else {
 			statuses = append(statuses, status)
 		}
 	}
 
-	if len(selected) == 0 {
+	if len(g.candidateNode) == 0 {
 		return convertFilterStatusesToStatus(statuses, g.selectedCount)
 	}
 
-	return &Status{Node: selected[0]}
+	g.candidateIndex++
+
+	return &Status{Node: g.candidateNode[0]}
 }
 
 func (g *singleNodeFilter) Done() {
