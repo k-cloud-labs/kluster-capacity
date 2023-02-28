@@ -120,7 +120,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 
 			if stop {
 				pods := allPods()
-				s.UpdateScheduledPods(pods...)
+				s.UpdateEstimationPods(pods...)
 				err = s.Stop(fmt.Sprintf(reason, len(pods)))
 			}
 		},

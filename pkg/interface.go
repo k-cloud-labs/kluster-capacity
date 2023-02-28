@@ -7,17 +7,22 @@ import (
 
 // Status capture all scheduled pods with reason why the estimation could not continue
 type Status struct {
-	Pods             []*corev1.Pod          `json:"pods"`
-	Nodes            map[string]corev1.Node `json:"nodes"`
-	NodesToScaleDown []string               `json:"nodes_to_scale_down"`
-	StopReason       string                 `json:"stop_reason"`
+	// all pods
+	Pods []corev1.Pod `json:"pods"`
+	// all nodes
+	Nodes map[string]corev1.Node `json:"nodes"`
+	// for ce
+	PodsForEstimation []*corev1.Pod `json:"pods_for_estimation"`
+	// for cc
+	NodesToScaleDown []string `json:"nodes_to_scale_down"`
+	StopReason       string   `json:"stop_reason"`
 }
 
 type Simulator interface {
 	Run() error
 	InitTheWorld(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
-	UpdateScheduledPods(pod ...*corev1.Pod)
+	UpdateEstimationPods(pod ...*corev1.Pod)
 	UpdateNodesToScaleDown(nodeName string)
 	Status() Status
 	GetPodsByNode(nodeName string) ([]*corev1.Pod, error)

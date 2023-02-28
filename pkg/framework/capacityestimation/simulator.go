@@ -147,7 +147,7 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 	if !metav1.HasAnnotation(bindPod.ObjectMeta, pkg.PodProvisioner) {
 		return nil
 	}
-	s.UpdateScheduledPods(bindPod)
+	s.UpdateEstimationPods(bindPod)
 
 	if s.maxSimulated > 0 && s.simulated >= s.maxSimulated {
 		return s.Stop(fmt.Sprintf("LimitReached: Maximum number of pods simulated: %v", s.maxSimulated))
