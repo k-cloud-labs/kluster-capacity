@@ -161,6 +161,12 @@ func (s *simulator) selectNextNode() error {
 			return err
 		}
 		s.createPodIndex++
+	} else {
+		klog.V(2).Infof("add node %s to simulator status", s.currentNode)
+		s.UpdateNodesToScaleDown(s.currentNode)
+		s.simulated++
+		s.nodeFilter.Done()
+		return s.selectNextNode()
 	}
 
 	return nil
