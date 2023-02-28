@@ -82,7 +82,7 @@ func generateReport(status pkg.Status) *SchedulerSimulationReview {
 	unschedulablePods := make([]*corev1.Pod, 0)
 	nodePodMap := make(map[string][]*corev1.Pod)
 
-	for _, pod := range status.Pods {
+	for _, pod := range status.PodsForEstimation {
 		nodePodMap[pod.Spec.NodeName] = append(nodePodMap[pod.Spec.NodeName], pod)
 	}
 
