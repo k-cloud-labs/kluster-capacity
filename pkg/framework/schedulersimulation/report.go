@@ -11,7 +11,7 @@ import (
 )
 
 type SchedulerSimulationReview struct {
-	UnschedulablePods []*corev1.Pod    `json:"unschedulablePods"`
+	UnschedulablePods []corev1.Pod     `json:"unschedulablePods"`
 	Details           []ScheduleDetail `json:"details"`
 	StopReason        string           `json:"stopReason"`
 }
@@ -21,6 +21,7 @@ type ScheduleDetail struct {
 	Replicas        int                 `json:"replicas"`
 	NodeAllocatable corev1.ResourceList `json:"nodeAllocatable"`
 	PodRequest      framework.Resource  `json:"podRequest"`
+	OnlyDSPod       bool                `json:"onlyDSPod"`
 }
 
 func (r *SchedulerSimulationReview) Print(verbose bool, format string) error {
@@ -45,22 +46,26 @@ func prettyPrint(r *SchedulerSimulationReview, verbose bool) {
 
 	for _, pod := range r.UnschedulablePods {
 		if verbose {
-			fmt.Printf("- %v/%s, reason: %s, request: %+v\n", pod.Namespace, pod.Name, getUnschedulableReason(pod), *utils.ComputePodResourceRequest(pod))
+			fmt.Printf("- %v/%s, reason: %s\n", pod.Namespace, pod.Name, getUnschedulableReason(&pod))
 		} else {
-			fmt.Printf("- %v/%s, reason: %s\n", pod.Namespace, pod.Name, getUnschedulableReason(pod))
+			fmt.Printf("- %v/%s\n", pod.Namespace, pod.Name)
 		}
 	}
 
 	if len(r.UnschedulablePods) > 0 {
 		fmt.Printf("\n\n")
 	}
-	fmt.Printf("Pod distribution among nodes:\n")
+	fmt.Printf("Pod distribution among %d nodes:\n", len(r.Details))
 
 	for _, detail := range r.Details {
 		if verbose {
-			fmt.Printf("\t- %v: %v instance(s), allocatable: %v, requested: %v\n", detail.NodeName, detail.Replicas, detail.NodeAllocatable, detail.PodRequest)
+			var msg string
+			if detail.OnlyDSPod {
+				msg = "Only DaemonSet Pod"
+			}
+			fmt.Printf("\t- %v: %v instance(s)%s\n", detail.NodeName, detail.Replicas, msg)
 		} else {
-			fmt.Printf("\t- %v: %v instance(s)\n", detail.NodeName, detail.Replicas)
+			fmt.Printf("\t- %v\n", detail.NodeName)
 		}
 	}
 }
@@ -79,10 +84,10 @@ func getUnschedulableReason(pod *corev1.Pod) string {
 
 func generateReport(status pkg.Status) *SchedulerSimulationReview {
 	details := make([]ScheduleDetail, 0)
-	unschedulablePods := make([]*corev1.Pod, 0)
-	nodePodMap := make(map[string][]*corev1.Pod)
+	unschedulablePods := make([]corev1.Pod, 0)
+	nodePodMap := make(map[string][]corev1.Pod)
 
-	for _, pod := range status.PodsForEstimation {
+	for _, pod := range status.Pods {
 		nodePodMap[pod.Spec.NodeName] = append(nodePodMap[pod.Spec.NodeName], pod)
 	}
 
@@ -95,13 +100,22 @@ func generateReport(status pkg.Status) *SchedulerSimulationReview {
 		var request framework.Resource
 
 		for _, pod := range pods {
-			addResource(&request, utils.ComputePodResourceRequest(pod))
+			addResource(&request, utils.ComputePodResourceRequest(&pod))
 		}
 
 		detail := ScheduleDetail{
 			NodeName:   node,
 			Replicas:   len(nodePodMap[node]),
 			PodRequest: request,
+			OnlyDSPod: func(pods []corev1.Pod) bool {
+				for i := range pods {
+					if !utils.IsDaemonsetPod(pods[i].OwnerReferences) {
+						return false
+					}
+				}
+
+				return true
+			}(nodePodMap[node]),
 		}
 		if node, ok := status.Nodes[node]; ok {
 			detail.NodeAllocatable = node.Status.Allocatable

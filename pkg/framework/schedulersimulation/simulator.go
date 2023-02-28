@@ -5,8 +5,6 @@ import (
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
@@ -68,16 +66,21 @@ func (s *simulator) Report() pkg.Printer {
 func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) (err error) {
 	succeedPodMap := sync.Map{}
 	failedPodMap := sync.Map{}
+	keyFunc := func(pod *corev1.Pod) string {
+		return pod.Namespace + "/" + pod.Name
+	}
 	count := 0
 	informerFactory.Core().V1().Pods().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			if count == 0 {
-				pods, _ := informerFactory.Core().V1().Pods().Lister().Pods(metav1.NamespaceAll).List(labels.Everything())
-				count = len(pods)
+		AddFunc: func(obj interface{}) {
+			pod := obj.(*corev1.Pod)
+			if len(pod.Spec.NodeName) > 0 {
+				succeedPodMap.Store(keyFunc(pod), true)
 			}
-
+			count++
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
 			pod := newObj.(*corev1.Pod)
-			key := pod.Namespace + "/" + pod.Name
+			key := keyFunc(pod)
 			if len(pod.Spec.NodeName) > 0 {
 				succeedPodMap.Store(key, true)
 				if _, ok := failedPodMap.Load(key); ok {
@@ -115,8 +118,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 			}
 
 			if stop {
-				pods, _ := informerFactory.Core().V1().Pods().Lister().Pods(metav1.NamespaceAll).List(labels.Everything())
-				err = s.Stop(fmt.Sprintf(reason, len(pods)))
+				err = s.Stop(fmt.Sprintf(reason, count))
 			}
 		},
 	})
