@@ -156,7 +156,7 @@ func parsePodsReview(templatePods []*corev1.Pod, status pkg.Status) []*CapacityE
 		})
 	}
 
-	for i, pod := range status.Pods {
+	for i, pod := range status.PodsForEstimation {
 		nodeName := pod.Spec.NodeName
 		first := true
 		for _, sum := range result[i%templatesCount].ReplicasOnNodes {
@@ -193,7 +193,7 @@ func getReviewSpec(podTemplates []*corev1.Pod) CapacityEstimationReviewSpec {
 func getReviewStatus(pods []*corev1.Pod, status pkg.Status) CapacityEstimationReviewStatus {
 	return CapacityEstimationReviewStatus{
 		CreationTimestamp: time.Now(),
-		Replicas:          int32(len(status.Pods)),
+		Replicas:          int32(len(status.PodsForEstimation)),
 		StopReason:        getMainStopReason(status.StopReason),
 		Pods:              parsePodsReview(pods, status),
 	}

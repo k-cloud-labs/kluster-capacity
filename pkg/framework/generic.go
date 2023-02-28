@@ -269,8 +269,8 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 	return nil
 }
 
-func (s *genericSimulator) UpdateScheduledPods(pod ...*corev1.Pod) {
-	s.status.Pods = append(s.status.Pods, pod...)
+func (s *genericSimulator) UpdateEstimationPods(pod ...*corev1.Pod) {
+	s.status.PodsForEstimation = append(s.status.PodsForEstimation, pod...)
 }
 
 func (s *genericSimulator) UpdateNodesToScaleDown(nodeName string) {
@@ -282,12 +282,6 @@ func (s *genericSimulator) Status() pkg.Status {
 }
 
 func (s *genericSimulator) Stop(reason string) error {
-	nodeMap := make(map[string]corev1.Node)
-	nodeList, _ := s.fakeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
-	for _, node := range nodeList.Items {
-		nodeMap[node.Name] = node
-	}
-
 	s.stopMux.Lock()
 	defer func() {
 		s.stopMux.Unlock()
@@ -296,6 +290,18 @@ func (s *genericSimulator) Stop(reason string) error {
 	if s.stopped {
 		return nil
 	}
+
+	nodeMap := make(map[string]corev1.Node)
+	nodeList, _ := s.fakeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
+	for _, node := range nodeList.Items {
+		nodeMap[node.Name] = node
+	}
+	s.status.Nodes = nodeMap
+
+	podList, _ := s.fakeClient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
+	s.status.Pods = podList.Items
+
+	s.status.StopReason = reason
 
 	if len(s.saveTo) > 0 {
 		file, err := os.OpenFile(s.saveTo, os.O_CREATE|os.O_RDWR, 0755)
@@ -321,8 +327,6 @@ func (s *genericSimulator) Stop(reason string) error {
 		close(s.schedulerCh)
 	}()
 
-	s.status.StopReason = reason
-	s.status.Nodes = nodeMap
 	s.stopped = true
 
 	return nil
