@@ -89,12 +89,14 @@ type genericSimulator struct {
 	withScheduledPods        bool
 	withNodeImages           bool
 	ignorePodsOnExcludesNode bool
-	outOfTreeRegistry        frameworkruntime.Registry
-	customBind               kubeschedulerconfig.PluginSet
-	customPreBind            kubeschedulerconfig.PluginSet
-	customPostBind           kubeschedulerconfig.PluginSet
-	customEventHandlers      []func()
-	postBindHook             func(*corev1.Pod) error
+	// deletionTimestamp is not nil and phase is not succeed or failed
+	withTerminatingPods bool
+	outOfTreeRegistry   frameworkruntime.Registry
+	customBind          kubeschedulerconfig.PluginSet
+	customPreBind       kubeschedulerconfig.PluginSet
+	customPostBind      kubeschedulerconfig.PluginSet
+	customEventHandlers []func()
+	postBindHook        func(*corev1.Pod) error
 
 	// for scheduler and informer
 	informerCh  chan struct{}
@@ -179,6 +181,12 @@ func WithSaveTo(to string) Option {
 	}
 }
 
+func WithTerminatingPods(with bool) Option {
+	return func(s *genericSimulator) {
+		s.withTerminatingPods = with
+	}
+}
+
 // NewGenericSimulator create a generic simulator for ce, cc, ss simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
 func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (pkg.Simulator, error) {
@@ -201,6 +209,7 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 		withScheduledPods:        true,
 		ignorePodsOnExcludesNode: false,
 		withNodeImages:           true,
+		withTerminatingPods:      true,
 	}
 	for _, option := range options {
 		option(s)
@@ -421,9 +430,14 @@ func (s *genericSimulator) preAdd(obj runtime.Object) (bool, runtime.Object) {
 			}
 		}
 
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed || pod.DeletionTimestamp != nil {
+		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 			return false, nil
 		}
+
+		if pod.DeletionTimestamp != nil && !s.withTerminatingPods {
+			return false, nil
+		}
+
 		if !s.withScheduledPods {
 			pod := utils.InitPod(pod)
 			pod.Status.Phase = corev1.PodPending
@@ -481,7 +495,14 @@ func getInitObjects(restMapper meta.RESTMapper, dynClient dynamic.Interface) []r
 						os.Exit(1)
 					}
 				} else {
-					list, err = dynClient.Resource(restMapping.Resource).Namespace(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
+					if restMapping.Resource.Resource == "pods" {
+						list, err = dynClient.Resource(restMapping.Resource).Namespace(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{
+							ResourceVersion: "0",
+							FieldSelector:   fmt.Sprintf("status.phase!=%v,status.phase!=%v", corev1.PodSucceeded, corev1.PodFailed),
+						})
+					} else {
+						list, err = dynClient.Resource(restMapping.Resource).Namespace(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{ResourceVersion: "0"})
+					}
 					if err != nil && !apierrors.IsNotFound(err) {
 						fmt.Printf("unable to list %s, error: %s", gvk.String(), err.Error())
 						os.Exit(1)

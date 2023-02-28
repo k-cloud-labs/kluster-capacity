@@ -37,6 +37,7 @@ func NewSSSimulatorExecutor(conf *options.SchedulerSimulationConfig) (pkg.Simula
 	scheduler, err := framework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
 		framework.WithNodeImages(false),
 		framework.WithScheduledPods(false),
+		framework.WithTerminatingPods(false),
 		framework.WithExcludeNodes(conf.Options.ExcludeNodes),
 		framework.WithSaveTo(conf.Options.SaveTo))
 	if err != nil {
@@ -105,11 +106,6 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 				return true
 			})
 
-			allPods := func() []*corev1.Pod {
-				pods, _ := informerFactory.Core().V1().Pods().Lister().Pods(metav1.NamespaceAll).List(labels.Everything())
-				return pods
-			}
-
 			if s.exitCondition == options.ExitWhenAllScheduled && succeedCount+failedCount == count {
 				stop = true
 				reason = "AllScheduled: %d pod(s) have been scheduled once."
@@ -119,8 +115,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 			}
 
 			if stop {
-				pods := allPods()
-				s.UpdateEstimationPods(pods...)
+				pods, _ := informerFactory.Core().V1().Pods().Lister().Pods(metav1.NamespaceAll).List(labels.Everything())
 				err = s.Stop(fmt.Sprintf(reason, len(pods)))
 			}
 		},
