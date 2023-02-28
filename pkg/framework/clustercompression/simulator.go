@@ -245,10 +245,15 @@ func (s *simulator) updatePodsFromCreatedPods() error {
 		if err != nil {
 			return err
 		}
-		_, err = s.fakeClient.CoreV1().Pods(podList[index].Namespace).Create(context.TODO(), podList[index], metav1.CreateOptions{})
+		klog.V(2).Infof("delete %d pod: %s", index, s.createdPods[index].Namespace+"/"+s.createdPods[index].Name)
+	}
+
+	for index := range s.createdPods {
+		_, err := s.fakeClient.CoreV1().Pods(s.createdPods[index].Namespace).Create(context.TODO(), s.createdPods[index], metav1.CreateOptions{})
 		if err != nil {
 			return err
 		}
+		klog.V(2).Infof("create %d pod: %s", index, s.createdPods[index].Namespace+"/"+s.createdPods[index].Name)
 	}
 
 	return nil
@@ -262,7 +267,7 @@ func (s *simulator) deletePodsByNode(node *corev1.Node) error {
 
 	var createdPods []*corev1.Pod
 	for i := range podList {
-		if !utils.IsDaemonsetPod(podList[i].OwnerReferences) {
+		if !utils.IsDaemonsetPod(podList[i].OwnerReferences) && podList[i].DeletionTimestamp == nil {
 			createdPods = append(createdPods, podList[i])
 			err := s.fakeClient.CoreV1().Pods(podList[i].Namespace).Delete(context.TODO(), podList[i].Name, metav1.DeleteOptions{})
 			if err != nil {
