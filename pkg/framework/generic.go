@@ -444,7 +444,7 @@ func (s *genericSimulator) preAdd(obj runtime.Object) (bool, runtime.Object) {
 		// ignore ds pods on exclude nodes
 		if s.excludeNodes != nil {
 			if _, ok := s.excludeNodes[pod.Spec.NodeName]; ok {
-				if s.ignorePodsOnExcludesNode || pod.OwnerReferences != nil && pod.OwnerReferences[0].Kind == "DaemonSet" {
+				if s.ignorePodsOnExcludesNode || pod.OwnerReferences != nil && utils.IsDaemonsetPod(pod.OwnerReferences) {
 					return false, nil
 				}
 			}
@@ -458,7 +458,7 @@ func (s *genericSimulator) preAdd(obj runtime.Object) (bool, runtime.Object) {
 			return false, nil
 		}
 
-		if !s.withScheduledPods {
+		if !s.withScheduledPods && !utils.IsDaemonsetPod(pod.OwnerReferences) {
 			pod := utils.InitPod(pod)
 			pod.Status.Phase = corev1.PodPending
 
