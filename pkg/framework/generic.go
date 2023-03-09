@@ -286,6 +286,18 @@ func (s *genericSimulator) UpdateNodesToScaleDown(nodeName string) {
 	s.status.NodesToScaleDown = append(s.status.NodesToScaleDown, nodeName)
 }
 
+func (s *genericSimulator) SelectNodeCountInc() {
+	s.status.SelectNodeCount++
+}
+
+func (s *genericSimulator) SchedulerCountInc() {
+	s.status.SchedulerCount++
+}
+
+func (s *genericSimulator) FailedSchedulerCountInc() {
+	s.status.FailedSchedulerCount++
+}
+
 func (s *genericSimulator) Status() pkg.Status {
 	return s.status
 }

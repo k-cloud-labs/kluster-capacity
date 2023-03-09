@@ -14,8 +14,12 @@ type Status struct {
 	// for ce
 	PodsForEstimation []*corev1.Pod `json:"pods_for_estimation"`
 	// for cc
-	NodesToScaleDown []string `json:"nodes_to_scale_down"`
-	StopReason       string   `json:"stop_reason"`
+	NodesToScaleDown     []string `json:"nodes_to_scale_down"`
+	SelectNodeCount      int      `json:"select_node_count"`
+	SchedulerCount       int      `json:"scheduler_count"`
+	FailedSchedulerCount int      `json:"failed_scheduler_count"`
+
+	StopReason string `json:"stop_reason"`
 }
 
 type Simulator interface {
@@ -24,6 +28,9 @@ type Simulator interface {
 	CreatePod(pod *corev1.Pod) error
 	UpdateEstimationPods(pod ...*corev1.Pod)
 	UpdateNodesToScaleDown(nodeName string)
+	SelectNodeCountInc()
+	SchedulerCountInc()
+	FailedSchedulerCountInc()
 	Status() Status
 	GetPodsByNode(nodeName string) ([]*corev1.Pod, error)
 	Stop(reason string) error

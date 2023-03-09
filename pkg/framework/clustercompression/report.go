@@ -17,9 +17,12 @@ type ClusterCompressionReview struct {
 }
 
 type ClusterCompressionReviewReviewStatus struct {
-	CreationTimestamp  time.Time                                   `json:"creationTimestamp"`
-	StopReason         *ClusterCompressionReviewScheduleStopReason `json:"stopReason"`
-	ScaleDownNodeNames []string                                    `json:"scaleDownNodeNames"`
+	CreationTimestamp    time.Time                                   `json:"creationTimestamp"`
+	StopReason           *ClusterCompressionReviewScheduleStopReason `json:"stopReason"`
+	ScaleDownNodeNames   []string                                    `json:"scaleDownNodeNames"`
+	SelectNodeCount      int                                         `json:"select_node_count"`
+	SchedulerCount       int                                         `json:"scheduler_count"`
+	FailedSchedulerCount int                                         `json:"failed_scheduler_count"`
 }
 
 type ClusterCompressionReviewScheduleStopReason struct {
@@ -35,9 +38,12 @@ func generateReport(status pkg.Status) *ClusterCompressionReview {
 
 func getReviewStatus(status pkg.Status) ClusterCompressionReviewReviewStatus {
 	return ClusterCompressionReviewReviewStatus{
-		CreationTimestamp:  time.Now(),
-		StopReason:         getMainStopReason(status.StopReason),
-		ScaleDownNodeNames: status.NodesToScaleDown,
+		CreationTimestamp:    time.Now(),
+		StopReason:           getMainStopReason(status.StopReason),
+		ScaleDownNodeNames:   status.NodesToScaleDown,
+		SelectNodeCount:      status.SelectNodeCount,
+		SchedulerCount:       status.SchedulerCount,
+		FailedSchedulerCount: status.FailedSchedulerCount,
 	}
 }
 
@@ -64,7 +70,9 @@ func (r *ClusterCompressionReview) Print(verbose bool, format string) error {
 func clusterCapacityReviewDefaultPrint(r *ClusterCompressionReview, verbose bool) error {
 	if r != nil && len(r.Status.ScaleDownNodeNames) > 0 {
 		if verbose {
-			fmt.Printf("%d node(s) in the cluster can be scaled down.\n", len(r.Status.ScaleDownNodeNames))
+			fmt.Printf("Select node %d times.\n", r.Status.SelectNodeCount)
+			fmt.Printf("Scheduled pod %d times, with %d scheduling failure.\n", r.Status.SchedulerCount+r.Status.FailedSchedulerCount, r.Status.FailedSchedulerCount)
+			fmt.Printf("\n%d node(s) in the cluster can be scaled down.\n", len(r.Status.ScaleDownNodeNames))
 			fmt.Printf("\nTermination reason: %v: %v\n", r.Status.StopReason.StopType, r.Status.StopReason.StopMessage)
 			fmt.Printf("\nnodes selected to be scaled down:\n")
 
@@ -77,7 +85,9 @@ func clusterCapacityReviewDefaultPrint(r *ClusterCompressionReview, verbose bool
 			}
 		}
 	} else {
-		fmt.Println("No nodes in the cluster can be scaled down.")
+		fmt.Printf("Select node %d times.\n", r.Status.SelectNodeCount)
+		fmt.Printf("Scheduled pod %d times, with %d scheduling failure.\n", r.Status.SchedulerCount+r.Status.FailedSchedulerCount, r.Status.FailedSchedulerCount)
+		fmt.Println("\nNo nodes in the cluster can be scaled down.")
 		fmt.Printf("\nTermination reason: %v: %v\n", r.Status.StopReason.StopType, r.Status.StopReason.StopMessage)
 	}
 

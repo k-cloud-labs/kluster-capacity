@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
+	utiltrace "k8s.io/utils/trace"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg"
@@ -109,15 +110,19 @@ func runCCSimulator(conf *options.ClusterCompressionConfig) (pkg.Printer, error)
 		return nil, err
 	}
 
+	trace := utiltrace.New("cluster compression")
+	defer trace.LogIfLong(0)
 	err = s.Initialize()
 	if err != nil {
 		return nil, err
 	}
+	trace.Step("init resource")
 
 	err = s.Run()
 	if err != nil {
 		return nil, err
 	}
+	trace.Step("simulator scheduling")
 
 	return s.Report(), nil
 }
