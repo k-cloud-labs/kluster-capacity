@@ -108,7 +108,7 @@ var (
 	initObjects []runtime.Object
 )
 
-type defaultFramework struct {
+type kubeschedulerFramework struct {
 	// fake clientset used by scheduler
 	fakeClient clientset.Interface
 	// fake informer factory used by scheduler
@@ -149,76 +149,76 @@ type defaultFramework struct {
 	saveTo string
 }
 
-type Option func(*defaultFramework)
+type Option func(*kubeschedulerFramework)
 
 func WithExcludeNodes(excludeNodes []string) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.excludeNodes = sets.New[string](excludeNodes...)
 	}
 }
 
 func WithOutOfTreeRegistry(registry frameworkruntime.Registry) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.outOfTreeRegistry = registry
 	}
 }
 
 func WithCustomBind(plugins kubeschedulerconfig.PluginSet) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.customBind = plugins
 	}
 }
 
 func WithCustomPreBind(plugins kubeschedulerconfig.PluginSet) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.customPreBind = plugins
 	}
 }
 
 func WithCustomPostBind(plugins kubeschedulerconfig.PluginSet) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.customPostBind = plugins
 	}
 }
 
 func WithCustomEventHandlers(handlers []func()) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.customEventHandlers = handlers
 	}
 }
 
 func WithNodeImages(with bool) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.withNodeImages = with
 	}
 }
 
 func WithScheduledPods(with bool) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.withScheduledPods = with
 	}
 }
 
 func WithIgnorePodsOnExcludesNode(with bool) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.ignorePodsOnExcludesNode = with
 	}
 }
 
 func WithPostBindHook(postBindHook func(*corev1.Pod) error) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.postBindHook = postBindHook
 	}
 }
 
 func WithSaveTo(to string) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.saveTo = to
 	}
 }
 
 func WithTerminatingPods(with bool) Option {
-	return func(s *defaultFramework) {
+	return func(s *kubeschedulerFramework) {
 		s.withTerminatingPods = with
 	}
 }
@@ -234,7 +234,7 @@ func NewKubeSchedulerFramework(kubeSchedulerConfig *schedconfig.CompletedConfig,
 		return nil, err
 	}
 
-	s := &defaultFramework{
+	s := &kubeschedulerFramework{
 		fakeClient:               kubeSchedulerConfig.Client,
 		dynamicClient:            dynamicClient,
 		restMapper:               restMapper,
@@ -272,7 +272,7 @@ func NewKubeSchedulerFramework(kubeSchedulerConfig *schedconfig.CompletedConfig,
 	return s, nil
 }
 
-func (s *defaultFramework) GetPodsByNode(nodeName string) ([]*corev1.Pod, error) {
+func (s *kubeschedulerFramework) GetPodsByNode(nodeName string) ([]*corev1.Pod, error) {
 	dump := s.scheduler.Cache.Dump()
 	var res []*corev1.Pod
 	if dump != nil && dump.Nodes[nodeName] != nil {
@@ -292,7 +292,7 @@ func (s *defaultFramework) GetPodsByNode(nodeName string) ([]*corev1.Pod, error)
 
 // InitTheWorld use objs outside or default init resources to initialize the scheduler
 // the objs outside must be typed object.
-func (s *defaultFramework) InitTheWorld(objs ...runtime.Object) error {
+func (s *kubeschedulerFramework) InitTheWorld(objs ...runtime.Object) error {
 	if len(objs) == 0 {
 		// black magic
 		klog.V(2).InfoS("Init the world form running cluster")
@@ -325,19 +325,19 @@ func (s *defaultFramework) InitTheWorld(objs ...runtime.Object) error {
 	return nil
 }
 
-func (s *defaultFramework) UpdateEstimationPods(pod ...*corev1.Pod) {
+func (s *kubeschedulerFramework) UpdateEstimationPods(pod ...*corev1.Pod) {
 	s.status.PodsForEstimation = append(s.status.PodsForEstimation, pod...)
 }
 
-func (s *defaultFramework) UpdateNodesToScaleDown(nodeName string) {
+func (s *kubeschedulerFramework) UpdateNodesToScaleDown(nodeName string) {
 	s.status.NodesToScaleDown = append(s.status.NodesToScaleDown, nodeName)
 }
 
-func (s *defaultFramework) Status() pkg.Status {
+func (s *kubeschedulerFramework) Status() pkg.Status {
 	return s.status
 }
 
-func (s *defaultFramework) Stop(reason string) error {
+func (s *kubeschedulerFramework) Stop(reason string) error {
 	s.stopMux.Lock()
 	defer func() {
 		s.stopMux.Unlock()
@@ -388,12 +388,12 @@ func (s *defaultFramework) Stop(reason string) error {
 	return nil
 }
 
-func (s *defaultFramework) CreatePod(pod *corev1.Pod) error {
+func (s *kubeschedulerFramework) CreatePod(pod *corev1.Pod) error {
 	_, err := s.fakeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	return err
 }
 
-func (s *defaultFramework) Run() error {
+func (s *kubeschedulerFramework) Run() error {
 	// wait for all informer cache synced
 	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
 	if s.dynInformerFactory != nil {
@@ -406,7 +406,7 @@ func (s *defaultFramework) Run() error {
 	return nil
 }
 
-func (s *defaultFramework) createScheduler(cc *schedconfig.CompletedConfig) (*scheduler.Scheduler, error) {
+func (s *kubeschedulerFramework) createScheduler(cc *schedconfig.CompletedConfig) (*scheduler.Scheduler, error) {
 	// custom event handlers
 	for _, handler := range s.customEventHandlers {
 		handler()
@@ -457,7 +457,7 @@ func (s *defaultFramework) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	)
 }
 
-func (s *defaultFramework) preAdd(obj runtime.Object) (bool, runtime.Object) {
+func (s *kubeschedulerFramework) preAdd(obj runtime.Object) (bool, runtime.Object) {
 	// filter exclude nodes and pods and update pod, node spec and status property
 	if pod, ok := obj.(*corev1.Pod); ok {
 		// ignore ds pods on exclude nodes
