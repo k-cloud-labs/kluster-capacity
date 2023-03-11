@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg"
@@ -22,7 +23,7 @@ type PodGenerator interface {
 
 // only support one scheduler for now and the scheduler name is "default-scheduler"
 type simulator struct {
-	pkg.Simulator
+	pkg.Framework
 
 	podGenerator PodGenerator
 	simulatedPod *corev1.Pod
@@ -37,7 +38,7 @@ type multiSimulator struct {
 
 // NewCESimulatorExecutor create a ce simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
-func NewCESimulatorExecutor(conf *options.CapacityEstimationConfig) (pkg.SimulatorExecutor, error) {
+func NewCESimulatorExecutor(conf *options.CapacityEstimationConfig) (pkg.Simulator, error) {
 	newSimulator := func(pod *corev1.Pod) (*simulator, error) {
 		kubeSchedulerConfig, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig, conf.Options.KubeConfig)
 		if err != nil {
@@ -61,14 +62,14 @@ func NewCESimulatorExecutor(conf *options.CapacityEstimationConfig) (pkg.Simulat
 			return nil, err
 		}
 
-		genericSimulator, err := pkgframework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
+		framework, err := pkgframework.NewKubeSchedulerFramework(kubeSchedulerConfig, kubeConfig,
 			pkgframework.WithExcludeNodes(conf.Options.ExcludeNodes),
 			pkgframework.WithPostBindHook(s.postBindHook))
 		if err != nil {
 			return nil, err
 		}
 
-		s.Simulator = genericSimulator
+		s.Framework = framework
 
 		return s, nil
 	}
@@ -161,8 +162,8 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 
 func (s *simulator) createNextPod() error {
 	pod := s.podGenerator.Generate()
-
 	s.simulated++
+	klog.V(2).InfoS("create simulate pod", "count", s.simulated, "key", pod.Namespace+"/"+pod.Name)
 
 	return s.CreatePod(pod)
 }
