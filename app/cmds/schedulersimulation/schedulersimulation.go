@@ -48,7 +48,7 @@ func NewSchedulerSimulationCmd() *cobra.Command {
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flag.Parse()
-			
+
 			err := validate(opt)
 			if err != nil {
 				return err
