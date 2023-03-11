@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package capacityestimation
 
 import (
@@ -23,10 +24,11 @@ import (
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
 	cliflag "k8s.io/component-base/cli/flag"
+	"k8s.io/klog/v2"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/capacityestimation"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/simulator/capacityestimation"
 )
 
 var capacityEstimationLong = dedent.Dedent(`
@@ -45,6 +47,8 @@ func NewCapacityEstimationCmd() *cobra.Command {
 		Long:          capacityEstimationLong,
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			flag.Parse()
+
 			err := validate(opt)
 			if err != nil {
 				return err
@@ -88,6 +92,7 @@ func validate(opt *options.CapacityEstimationOptions) error {
 }
 
 func run(opt *options.CapacityEstimationOptions) error {
+	defer klog.Flush()
 	conf := options.NewCapacityEstimationConfig(opt)
 
 	err := conf.ParseAPISpec()

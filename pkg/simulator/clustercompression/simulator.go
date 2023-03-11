@@ -23,7 +23,7 @@ const FailedSelectNode = "FailedSelectNode: could not find a node that satisfies
 
 // only support one scheduler for now and the scheduler name is "default-scheduler"
 type simulator struct {
-	pkg.Simulator
+	pkg.Framework
 
 	maxSimulated             int
 	simulated                int
@@ -38,7 +38,7 @@ type simulator struct {
 
 // NewCCSimulatorExecutor create a ce simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
-func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.SimulatorExecutor, error) {
+func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.Simulator, error) {
 	cc, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig, conf.Options.KubeConfig)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.Simulat
 		return nil, err
 	}
 
-	genericSimulator, err := pkgframework.NewGenericSimulator(cc, kubeConfig,
+	framework, err := pkgframework.NewKubeSchedulerFramework(cc, kubeConfig,
 		pkgframework.WithExcludeNodes(conf.Options.ExcludeNodes),
 		pkgframework.WithPostBindHook(s.postBindHook),
 	)
@@ -70,7 +70,7 @@ func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.Simulat
 		return nil, err
 	}
 
-	s.Simulator = genericSimulator
+	s.Framework = framework
 	s.fakeClient = cc.Client
 	nodeFilter, err := NewNodeFilter(s.fakeClient, s.GetPodsByNode, conf.Options.ExcludeNodes, conf.Options.FilterNodeOptions)
 	if err != nil {
@@ -88,7 +88,12 @@ func (s *simulator) Initialize(objs ...runtime.Object) error {
 	}
 
 	// select first node
-	return s.selectNextNode()
+	err = s.selectNextNode()
+	if err != nil {
+		return s.Stop(fmt.Sprintf("%s, %s", FailedSelectNode, err.Error()))
+	}
+
+	return nil
 }
 
 func (s *simulator) Report() pkg.Printer {
