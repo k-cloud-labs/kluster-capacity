@@ -18,7 +18,8 @@ type Status struct {
 	StopReason       string   `json:"stop_reason"`
 }
 
-type Simulator interface {
+// Framework need to be implemented by all scheduler framework
+type Framework interface {
 	Run() error
 	InitTheWorld(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
@@ -29,7 +30,8 @@ type Simulator interface {
 	Stop(reason string) error
 }
 
-type SimulatorExecutor interface {
+// Simulator need to be implemented by all simulator
+type Simulator interface {
 	Run() error
 	Initialize(objs ...runtime.Object) error
 	Report() Printer

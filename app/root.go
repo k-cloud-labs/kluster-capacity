@@ -50,6 +50,8 @@ func Execute() {
 }
 
 func init() {
+	//klog.InitFlags(nil)
+
 	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.

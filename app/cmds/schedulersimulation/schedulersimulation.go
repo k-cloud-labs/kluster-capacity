@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package schedulersimulation
 
 import (
@@ -23,10 +24,11 @@ import (
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
 	cliflag "k8s.io/component-base/cli/flag"
+	"k8s.io/klog/v2"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/schedulersimulation/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/schedulersimulation"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/simulator/schedulersimulation"
 )
 
 var schedulerSimulationLong = dedent.Dedent(`
@@ -45,6 +47,8 @@ func NewSchedulerSimulationCmd() *cobra.Command {
 		Long:          schedulerSimulationLong,
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			flag.Parse()
+
 			err := validate(opt)
 			if err != nil {
 				return err
@@ -92,6 +96,7 @@ func validate(opt *options.SchedulerSimulationOptions) error {
 }
 
 func run(opt *options.SchedulerSimulationOptions) error {
+	defer klog.Flush()
 	conf := options.NewSchedulerSimulationConfig(opt)
 
 	// TODO: init simulator from snapshot
