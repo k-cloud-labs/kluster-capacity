@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"k8s.io/klog/v2"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation"
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression"
@@ -50,6 +51,8 @@ func Execute() {
 }
 
 func init() {
+	klog.InitFlags(nil)
+
 	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.

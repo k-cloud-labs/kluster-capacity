@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package clustercompression
 
 import (
@@ -27,7 +28,7 @@ import (
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression/options"
 	"github.com/k-cloud-labs/kluster-capacity/pkg"
-	"github.com/k-cloud-labs/kluster-capacity/pkg/framework/clustercompression"
+	"github.com/k-cloud-labs/kluster-capacity/pkg/simulator/clustercompression"
 )
 
 var clusterCompressionLong = dedent.Dedent(`
@@ -46,6 +47,8 @@ func NewClusterCompressionCmd() *cobra.Command {
 		Long:          clusterCompressionLong,
 		SilenceErrors: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			flag.Parse()
+
 			err := validateOptions(opt)
 			if err != nil {
 				return err
@@ -59,9 +62,6 @@ func NewClusterCompressionCmd() *cobra.Command {
 			return nil
 		},
 	}
-
-	klog.InitFlags(nil)
-	flag.Parse()
 
 	flags := cmd.Flags()
 	flags.SetNormalizeFunc(cliflag.WordSepNormalizeFunc)

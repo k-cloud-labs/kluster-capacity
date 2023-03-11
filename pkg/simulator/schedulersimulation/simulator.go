@@ -16,12 +16,12 @@ import (
 )
 
 type simulator struct {
-	pkg.Simulator
+	pkg.Framework
 
 	exitCondition string
 }
 
-func NewSSSimulatorExecutor(conf *options.SchedulerSimulationConfig) (pkg.SimulatorExecutor, error) {
+func NewSSSimulatorExecutor(conf *options.SchedulerSimulationConfig) (pkg.Simulator, error) {
 	kubeSchedulerConfig, err := utils.BuildKubeSchedulerCompletedConfig(conf.Options.SchedulerConfig, conf.Options.KubeConfig)
 	if err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func NewSSSimulatorExecutor(conf *options.SchedulerSimulationConfig) (pkg.Simula
 		return nil, err
 	}
 
-	scheduler, err := framework.NewGenericSimulator(kubeSchedulerConfig, kubeConfig,
+	framework, err := framework.NewKubeSchedulerFramework(kubeSchedulerConfig, kubeConfig,
 		framework.WithNodeImages(false),
 		framework.WithScheduledPods(false),
 		framework.WithTerminatingPods(false),
@@ -43,7 +43,7 @@ func NewSSSimulatorExecutor(conf *options.SchedulerSimulationConfig) (pkg.Simula
 	}
 
 	s := &simulator{
-		Simulator:     scheduler,
+		Framework:     framework,
 		exitCondition: conf.Options.ExitCondition,
 	}
 

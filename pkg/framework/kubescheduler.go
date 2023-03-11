@@ -1,3 +1,19 @@
+/*
+Copyright © 2023 k-cloud-labs org
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package framework
 
 import (
@@ -30,6 +46,7 @@ import (
 	"k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/klog/v2"
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/features"
@@ -91,7 +108,7 @@ var (
 	initObjects []runtime.Object
 )
 
-type genericSimulator struct {
+type defaultFramework struct {
 	// fake clientset used by scheduler
 	fakeClient clientset.Interface
 	// fake informer factory used by scheduler
@@ -132,83 +149,83 @@ type genericSimulator struct {
 	saveTo string
 }
 
-type Option func(*genericSimulator)
+type Option func(*defaultFramework)
 
 func WithExcludeNodes(excludeNodes []string) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.excludeNodes = sets.New[string](excludeNodes...)
 	}
 }
 
 func WithOutOfTreeRegistry(registry frameworkruntime.Registry) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.outOfTreeRegistry = registry
 	}
 }
 
 func WithCustomBind(plugins kubeschedulerconfig.PluginSet) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.customBind = plugins
 	}
 }
 
 func WithCustomPreBind(plugins kubeschedulerconfig.PluginSet) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.customPreBind = plugins
 	}
 }
 
 func WithCustomPostBind(plugins kubeschedulerconfig.PluginSet) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.customPostBind = plugins
 	}
 }
 
 func WithCustomEventHandlers(handlers []func()) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.customEventHandlers = handlers
 	}
 }
 
 func WithNodeImages(with bool) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.withNodeImages = with
 	}
 }
 
 func WithScheduledPods(with bool) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.withScheduledPods = with
 	}
 }
 
 func WithIgnorePodsOnExcludesNode(with bool) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.ignorePodsOnExcludesNode = with
 	}
 }
 
 func WithPostBindHook(postBindHook func(*corev1.Pod) error) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.postBindHook = postBindHook
 	}
 }
 
 func WithSaveTo(to string) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.saveTo = to
 	}
 }
 
 func WithTerminatingPods(with bool) Option {
-	return func(s *genericSimulator) {
+	return func(s *defaultFramework) {
 		s.withTerminatingPods = with
 	}
 }
 
-// NewGenericSimulator create a generic simulator for ce, cc, ss simulator which is completely independent of apiserver so no need
+// NewKubeSchedulerFramework create a generic simulator for ce, cc, ss simulator which is completely independent of apiserver so no need
 // for kubeconfig nor for apiserver url
-func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (pkg.Simulator, error) {
+func NewKubeSchedulerFramework(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (pkg.Framework, error) {
 	kubeSchedulerConfig.InformerFactory.InformerFor(&corev1.Pod{}, newPodInformer)
 
 	dynamicClient := dynamic.NewForConfigOrDie(restConfig)
@@ -217,7 +234,7 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 		return nil, err
 	}
 
-	s := &genericSimulator{
+	s := &defaultFramework{
 		fakeClient:               kubeSchedulerConfig.Client,
 		dynamicClient:            dynamicClient,
 		restMapper:               restMapper,
@@ -255,7 +272,7 @@ func NewGenericSimulator(kubeSchedulerConfig *schedconfig.CompletedConfig, restC
 	return s, nil
 }
 
-func (s *genericSimulator) GetPodsByNode(nodeName string) ([]*corev1.Pod, error) {
+func (s *defaultFramework) GetPodsByNode(nodeName string) ([]*corev1.Pod, error) {
 	dump := s.scheduler.Cache.Dump()
 	var res []*corev1.Pod
 	if dump != nil && dump.Nodes[nodeName] != nil {
@@ -275,9 +292,10 @@ func (s *genericSimulator) GetPodsByNode(nodeName string) ([]*corev1.Pod, error)
 
 // InitTheWorld use objs outside or default init resources to initialize the scheduler
 // the objs outside must be typed object.
-func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
+func (s *defaultFramework) InitTheWorld(objs ...runtime.Object) error {
 	if len(objs) == 0 {
 		// black magic
+		klog.V(2).InfoS("Init the world form running cluster")
 		initObjects := getInitObjects(s.restMapper, s.dynamicClient)
 		for _, unstructuredObj := range initObjects {
 			obj := initResources[unstructuredObj.GetObjectKind().GroupVersionKind()]()
@@ -291,6 +309,7 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 			}
 		}
 	} else {
+		klog.V(2).InfoS("Init the world form snapshot")
 		for _, obj := range objs {
 			if _, ok := obj.(runtime.Unstructured); ok {
 				return errors.New("type of objs used to init the world must not be unstructured")
@@ -306,19 +325,19 @@ func (s *genericSimulator) InitTheWorld(objs ...runtime.Object) error {
 	return nil
 }
 
-func (s *genericSimulator) UpdateEstimationPods(pod ...*corev1.Pod) {
+func (s *defaultFramework) UpdateEstimationPods(pod ...*corev1.Pod) {
 	s.status.PodsForEstimation = append(s.status.PodsForEstimation, pod...)
 }
 
-func (s *genericSimulator) UpdateNodesToScaleDown(nodeName string) {
+func (s *defaultFramework) UpdateNodesToScaleDown(nodeName string) {
 	s.status.NodesToScaleDown = append(s.status.NodesToScaleDown, nodeName)
 }
 
-func (s *genericSimulator) Status() pkg.Status {
+func (s *defaultFramework) Status() pkg.Status {
 	return s.status
 }
 
-func (s *genericSimulator) Stop(reason string) error {
+func (s *defaultFramework) Stop(reason string) error {
 	s.stopMux.Lock()
 	defer func() {
 		s.stopMux.Unlock()
@@ -369,12 +388,12 @@ func (s *genericSimulator) Stop(reason string) error {
 	return nil
 }
 
-func (s *genericSimulator) CreatePod(pod *corev1.Pod) error {
+func (s *defaultFramework) CreatePod(pod *corev1.Pod) error {
 	_, err := s.fakeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	return err
 }
 
-func (s *genericSimulator) Run() error {
+func (s *defaultFramework) Run() error {
 	// wait for all informer cache synced
 	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
 	if s.dynInformerFactory != nil {
@@ -387,7 +406,7 @@ func (s *genericSimulator) Run() error {
 	return nil
 }
 
-func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*scheduler.Scheduler, error) {
+func (s *defaultFramework) createScheduler(cc *schedconfig.CompletedConfig) (*scheduler.Scheduler, error) {
 	// custom event handlers
 	for _, handler := range s.customEventHandlers {
 		handler()
@@ -438,7 +457,7 @@ func (s *genericSimulator) createScheduler(cc *schedconfig.CompletedConfig) (*sc
 	)
 }
 
-func (s *genericSimulator) preAdd(obj runtime.Object) (bool, runtime.Object) {
+func (s *defaultFramework) preAdd(obj runtime.Object) (bool, runtime.Object) {
 	// filter exclude nodes and pods and update pod, node spec and status property
 	if pod, ok := obj.(*corev1.Pod); ok {
 		// ignore ds pods on exclude nodes
