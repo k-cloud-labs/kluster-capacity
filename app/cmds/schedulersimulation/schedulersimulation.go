@@ -88,10 +88,6 @@ func validate(opt *options.SchedulerSimulationOptions) error {
 		return errors.New("kubeconfig is missing")
 	}
 
-	if len(opt.SchedulerConfig) == 0 {
-		return errors.New("schedulerconfig is missing")
-	}
-
 	return nil
 }
 

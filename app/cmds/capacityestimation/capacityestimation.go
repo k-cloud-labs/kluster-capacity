@@ -49,6 +49,7 @@ func NewCapacityEstimationCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flag.Parse()
 
+			opt.Default()
 			err := validate(opt)
 			if err != nil {
 				return err
@@ -82,10 +83,6 @@ func validate(opt *options.CapacityEstimationOptions) error {
 
 	if len(opt.KubeConfig) == 0 {
 		return errors.New("kubeconfig is missing")
-	}
-
-	if len(opt.SchedulerConfig) == 0 {
-		return errors.New("schedulerconfig is missing")
 	}
 
 	return nil

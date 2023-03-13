@@ -18,6 +18,7 @@ import (
 	schedconfig "k8s.io/kubernetes/cmd/kube-scheduler/app/config"
 	kubescheduleroptions "k8s.io/kubernetes/cmd/kube-scheduler/app/options"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config/latest"
 	kubeschedulerscheme "k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -67,6 +68,12 @@ func BuildKubeSchedulerCompletedConfig(config, kubeconfig string) (*schedconfig.
 			return nil, err
 		}
 		if err := validation.ValidateKubeSchedulerConfiguration(cfg); err != nil {
+			return nil, err
+		}
+		kcfg = cfg
+	} else {
+		cfg, err := latest.Default()
+		if err != nil {
 			return nil, err
 		}
 		kcfg = cfg

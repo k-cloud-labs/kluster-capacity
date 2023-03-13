@@ -1,5 +1,10 @@
 package cmds
 
+import (
+	"os"
+	"path/filepath"
+)
+
 type Options struct {
 	SchedulerConfig string
 	KubeConfig      string
@@ -11,4 +16,14 @@ type Options struct {
 	SaveTo       string
 	ExcludeNodes []string
 	MaxLimit     int
+}
+
+func (o *Options) Default() {
+	if len(o.KubeConfig) == 0 {
+		config := os.Getenv("KUBECONFIG")
+		if len(config) == 0 {
+			config = filepath.Join(os.Getenv("HOME"), ".kube/config")
+		}
+		o.KubeConfig = config
+	}
 }

@@ -10,7 +10,6 @@
 
 Cluster capacity tool supports capacity estimation, scheduler simulation, and cluster compression.
 This repository was inspired by https://github.com/kubernetes-sigs/cluster-capacity.
-The code in this repository is based on https://github.com/kubernetes-sigs/cluster-capacity.
 
 ## Build
 Build the framework:
@@ -42,9 +41,9 @@ run the analysis:
 
 ```sh
 # use an specified pod yaml file as pod template
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> 
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> 
 # use an existing pod from cluster as pod template
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-cluster <namespace/name key of the pod> 
+$ ./kluster-capacity ce --pods-from-cluster <namespace/name key of the pod> 
 ```
 For more information about available options run:
 
@@ -58,7 +57,7 @@ Assuming a cluster is running with 4 nodes and 1 master with each node with 2 CP
 With pod resource requirements to be `150m` of CPU and `100Mi` of Memory.
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> --verbose
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -82,7 +81,7 @@ Once the number of running pods in the cluster grows and the analysis is run aga
 the number of schedulable pods decreases as well:
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> --verbose
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -106,7 +105,7 @@ Pod distribution among nodes:
 `ce` command has a flag `--output (-o)` to format its output as json or yaml.
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> -o json|yaml
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> -o json|yaml
 ```
 
 The json or yaml output is not versioned and is not guaranteed to be stable across various releases.
@@ -121,7 +120,7 @@ Compared to cluster compression, its results are more extreme and idealized.
 run the analysis:
 
 ```shell
- ./kluster-capacity ss --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig>
+ ./kluster-capacity ss
 ```
 For more information about available options run:
 
@@ -138,7 +137,7 @@ With 40 pod with resource requirements to be `100m` of CPU and `200Mi` of Memory
 If the scheduler uses the `LeastAllocated` strategy, the scheduling result may be as follows:
 
 ```sh
-$ ./kluster-capacity ss --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig>
+$ ./kluster-capacity ss --verbose
 Termination reason: AllSucceed: 40 pod(s) have been scheduled successfully.
 
 Pod distribution among nodes:
@@ -151,7 +150,7 @@ Pod distribution among nodes:
 Once the scheduler uses the `MostAllocated` strategy, the scheduling result may be as follows:
 
 ```sh
-$ ./kluster-capacity ss --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig>
+$ ./kluster-capacity ss --verbose
 Termination reason: AllSucceed: 40 pod(s) have been scheduled successfully.
 
 Pod distribution among nodes:
@@ -172,7 +171,7 @@ Compared to simulation scheduling, the results of cluster compression are genera
 run the analysis:
 
 ```shell
- ./kluster-capacity cc --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --verbose
+ ./kluster-capacity cc --verbose
 ```
 For more information about available options run:
 
@@ -186,7 +185,7 @@ Assuming a cluster is running with 4 nodes and 1 master with each node with 2 CP
 With 40 pod with resource requirements to be `100m` of CPU and `200Mi` of Memory bind to the 4 nodes.
 
 ```shell
-./kluster-capacity cc --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --verbose
+./kluster-capacity cc --verbose
 2 node(s) in the cluster can be scaled down.
 
 Termination reason: FailedSelectNode: could not find a node that satisfies the condition, 1 master node(s); 2 node(s) can't be scale down because of insufficient resource in other nodes;
