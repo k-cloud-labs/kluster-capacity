@@ -112,6 +112,7 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 	}
 
 	s.bindSuccessPodCount++
+	s.Status().SchedulerCountInc()
 	if len(s.createdPods) > 0 && s.createPodIndex < len(s.createdPods) {
 		klog.V(2).Infof("create %d pod: %s", s.createPodIndex, s.createdPods[s.createPodIndex].Namespace+"/"+s.createdPods[s.createPodIndex].Name)
 		_, err := s.fakeClient.CoreV1().Pods(s.createdPods[s.createPodIndex].Namespace).Create(context.TODO(), utils.InitPod(s.createdPods[s.createPodIndex]), metav1.CreateOptions{})
@@ -135,6 +136,7 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 }
 
 func (s *simulator) selectNextNode() error {
+	s.Status().SelectNodeCountInc()
 	status := s.nodeFilter.SelectNode()
 	if status != nil && status.Node == nil {
 		return errors.New(status.ErrReason)
@@ -308,6 +310,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 							// Only for pending pods provisioned by cc
 							if podCondition.Type == corev1.PodScheduled && podCondition.Status == corev1.ConditionFalse &&
 								podCondition.Reason == corev1.PodReasonUnschedulable {
+								s.Status().FailedSchedulerCountInc()
 								// 1. Empty all Pods created by fake before
 								// 2. Uncordon this node if needed
 								// 3. Type the flags that cannot be filtered, clear the flags that prohibit scheduling, add failed scale down label, then selectNextNode
