@@ -10,7 +10,21 @@
 集群容量分析工具支持剩余容量估算、调度器模拟和集群压缩等功能。  
 这个仓库的灵感来自于 https://github.com/kubernetes-sigs/cluster-capacity。
 
-## 编译
+## 安装
+### Homebrew
+通过 [Homebrew](https://brew.sh/) 安装:
+```
+brew tap k-cloud-labs/tap
+brew install k-cloud-labs/tap/kluster-capacity
+```
+
+### Krew
+通过 [Krew](https://github.com/GoogleContainerTools/krew) 安装:
+```
+kubectl krew install kluster-capacity
+```
+
+### 从源码编译
 编译整个程序:
 
 ```sh
