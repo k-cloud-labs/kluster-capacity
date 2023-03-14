@@ -227,16 +227,23 @@ func WithTerminatingPods(with bool) Option {
 // for kubeconfig nor for apiserver url
 func NewKubeSchedulerFramework(kubeSchedulerConfig *schedconfig.CompletedConfig, restConfig *restclient.Config, options ...Option) (pkg.Framework, error) {
 	kubeSchedulerConfig.InformerFactory.InformerFor(&corev1.Pod{}, newPodInformer)
-
-	dynamicClient := dynamic.NewForConfigOrDie(restConfig)
-	restMapper, err := apiutil.NewDynamicRESTMapper(restConfig)
-	if err != nil {
-		return nil, err
+	var err error
+	var restMapper meta.RESTMapper
+	var dynamicClient *dynamic.DynamicClient
+	var dynInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	if restConfig != nil {
+		if restMapper, err = apiutil.NewDynamicRESTMapper(restConfig); err != nil {
+			return nil, err
+		}
+		dynamicClient = dynamic.NewForConfigOrDie(restConfig)
+		// only for latest k8s version
+		dynInformerFactory = dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, 0, corev1.NamespaceAll, nil)
 	}
 
 	s := &kubeschedulerFramework{
 		fakeClient:               kubeSchedulerConfig.Client,
 		dynamicClient:            dynamicClient,
+		dynInformerFactory:       dynInformerFactory,
 		restMapper:               restMapper,
 		stopCh:                   make(chan struct{}),
 		fakeInformerFactory:      kubeSchedulerConfig.InformerFactory,
@@ -249,12 +256,6 @@ func NewKubeSchedulerFramework(kubeSchedulerConfig *schedconfig.CompletedConfig,
 	}
 	for _, option := range options {
 		option(s)
-	}
-
-	// only for latest k8s version
-	if restConfig != nil {
-		dynClient := dynamic.NewForConfigOrDie(restConfig)
-		s.dynInformerFactory = dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynClient, 0, corev1.NamespaceAll, nil)
 	}
 
 	scheduler, err := s.createScheduler(kubeSchedulerConfig)
@@ -293,7 +294,7 @@ func (s *kubeschedulerFramework) GetPodsByNode(nodeName string) ([]*corev1.Pod, 
 // InitTheWorld use objs outside or default init resources to initialize the scheduler
 // the objs outside must be typed object.
 func (s *kubeschedulerFramework) InitTheWorld(objs ...runtime.Object) error {
-	if len(objs) == 0 {
+	if len(objs) == 0 && s.dynamicClient != nil {
 		// black magic
 		klog.V(2).InfoS("Init the world form running cluster")
 		initObjects := getInitObjects(s.restMapper, s.dynamicClient)
