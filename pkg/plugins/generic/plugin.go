@@ -7,7 +7,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+
+	"github.com/k-cloud-labs/kluster-capacity/pkg"
 )
 
 const Name = "GenericBinder"
@@ -15,12 +18,14 @@ const Name = "GenericBinder"
 type GenericBinder struct {
 	client       kubernetes.Interface
 	postBindHook func(*corev1.Pod) error
+	status       *pkg.Status
 }
 
-func New(postBindHook func(*corev1.Pod) error, client kubernetes.Interface) (framework.Plugin, error) {
+func New(postBindHook func(*corev1.Pod) error, client kubernetes.Interface, status *pkg.Status) (framework.Plugin, error) {
 	return &GenericBinder{
 		postBindHook: postBindHook,
 		client:       client,
+		status:       status,
 	}, nil
 }
 
@@ -50,8 +55,13 @@ func (b *GenericBinder) PreBind(ctx context.Context, state *framework.CycleState
 
 func (b *GenericBinder) PostBind(_ context.Context, _ *framework.CycleState, pod *corev1.Pod, _ string) {
 	if b.postBindHook != nil {
+		if !metav1.HasAnnotation(pod.ObjectMeta, pkg.PodProvisioner) {
+			return
+		}
+		b.status.SchedulerCountInc()
+
 		if err := b.postBindHook(pod); err != nil {
-			framework.NewStatus(framework.Error, fmt.Sprintf("Invoking postBindHook gives an error: %v", err))
+			klog.ErrorS(err, "Invoking postBindHook gives an error", "pod", klog.KObj(pod))
 		}
 	}
 }

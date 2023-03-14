@@ -103,9 +103,6 @@ func (s *simulator) Report() pkg.Printer {
 }
 
 func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
-	if !metav1.HasAnnotation(bindPod.ObjectMeta, pkg.PodProvisioner) {
-		return nil
-	}
 
 	if s.maxSimulated > 0 && s.simulated >= s.maxSimulated {
 		return s.Stop(fmt.Sprintf("LimitReached: maximum number of nodes simulated: %v", s.maxSimulated))
@@ -135,6 +132,7 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 }
 
 func (s *simulator) selectNextNode() error {
+	s.Status().SelectNodeCountInc()
 	status := s.nodeFilter.SelectNode()
 	if status != nil && status.Node == nil {
 		return errors.New(status.ErrReason)
@@ -308,6 +306,7 @@ func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFac
 							// Only for pending pods provisioned by cc
 							if podCondition.Type == corev1.PodScheduled && podCondition.Status == corev1.ConditionFalse &&
 								podCondition.Reason == corev1.PodReasonUnschedulable {
+								s.Status().FailedSchedulerCountInc()
 								// 1. Empty all Pods created by fake before
 								// 2. Uncordon this node if needed
 								// 3. Type the flags that cannot be filtered, clear the flags that prohibit scheduling, add failed scale down label, then selectNextNode

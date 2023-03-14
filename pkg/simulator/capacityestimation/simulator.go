@@ -145,9 +145,6 @@ func (ms *multiSimulator) Report() pkg.Printer {
 }
 
 func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
-	if !metav1.HasAnnotation(bindPod.ObjectMeta, pkg.PodProvisioner) {
-		return nil
-	}
 	s.UpdateEstimationPods(bindPod)
 
 	if s.maxSimulated > 0 && s.simulated >= s.maxSimulated {
