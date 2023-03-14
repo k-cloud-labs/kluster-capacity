@@ -61,5 +61,7 @@ brews:
     homepage: https://github.com/k-cloud-labs/kluster-capacity
     license: apache-2.0
     description: A simple CLI that support capacity estimation, cluster compression, scheduler simulation, fragmentation analysis and resource overview.
+    dependencies:
+      - name: git
     test: |
       system "#{bin}/kube-capacity version"
