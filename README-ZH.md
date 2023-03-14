@@ -8,8 +8,7 @@
 [![Go doc](https://img.shields.io/badge/go.dev-reference-brightgreen?logo=go&logoColor=white&style=flat)](https://pkg.go.dev/github.com/k-cloud-labs/kluster-capacity)
 
 集群容量分析工具支持剩余容量估算、调度器模拟和集群压缩等功能。  
-这个仓库的灵感来自于 https://github.com/kubernetes-sigs/cluster-capacity。   
-仓库中的代码基于 https://github.com/kubernetes-sigs/cluster-capacity。
+这个仓库的灵感来自于 https://github.com/kubernetes-sigs/cluster-capacity。
 
 ## 编译
 编译整个程序:
@@ -41,9 +40,9 @@ $ make build
 
 ```sh
 # 直接使用指定的 pod 模板
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> 
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> 
 # 使用集群中指定的 pod 作为模板
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-cluster <namespace/name key of the pod> 
+$ ./kluster-capacity ce --pods-from-cluster <namespace/name key of the pod> 
 ```
 更多运行参数及功能，请执行如下命令：
 
@@ -55,7 +54,7 @@ $ ./kluster-capacity ce --help
 假设集群运行有 4 个节点和 1 个主节点，每个节点有 2 个 CPU 和 4GB 内存。而每个 Pod 所需的资源为 150m CPU 和 100Mi 内存。
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> --verbose
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -78,7 +77,7 @@ Pod distribution among nodes:
 随着集群中运行的 pod 数量增加，再次运行分析时，可调度的 pod 数量也会减少。
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> --verbose
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> --verbose
 Pod requirements:
 	- cpu: 150m
 	- memory: 100Mi
@@ -102,7 +101,7 @@ Pod distribution among nodes:
 `ce` 命令有一个 `--output (-o)` 标志，可以将其输出格式化为 json 或 yaml。
 
 ```sh
-$ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --pods-from-template <path to pod templates> -o json|yaml
+$ ./kluster-capacity ce --pods-from-template <path to pod templates> -o json|yaml
 ```
 
 ## 调度模拟
@@ -115,7 +114,7 @@ $ ./kluster-capacity ce --kubeconfig <path to kubeconfig> --schedulerconfig= <pa
 ### 运行
 
 ```shell
- ./kluster-capacity ss --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig>
+ ./kluster-capacity ss 
 ```
 更多运行参数及功能，请执行如下命令：
 
@@ -131,7 +130,7 @@ $ ./kluster-capacity ss --help
 如果调度器使用 `LeastAllocated` 策略，调度结果可能如下所示：
 
 ```sh
-$ ./kluster-capacity ss --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig>
+$ ./kluster-capacity ss --verbose
 Termination reason: AllSucceed: 40 pod(s) have been scheduled successfully.
 
 Pod distribution among nodes:
@@ -144,7 +143,7 @@ Pod distribution among nodes:
 如果调整调度器使用 `MostAllocated` 策略，调度结果可能如下所示：
 
 ```sh
-$ ./kluster-capacity ss --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig>
+$ ./kluster-capacity ss --verbose
 Termination reason: AllSucceed: 40 pod(s) have been scheduled successfully.
 
 Pod distribution among nodes:
@@ -164,7 +163,7 @@ Pod distribution among nodes:
 ### 运行
 
 ```shell
- ./kluster-capacity cc --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --verbose
+ ./kluster-capacity cc --verbose
 ```
 更多运行参数及功能，请执行如下命令：
 
@@ -177,7 +176,7 @@ $ ./kluster-capacity cc --help
 假设集群运行有 4 个节点和 1 个主节点，每个节点有 2 个 CPU 和 4GB 内存。运行有 40 个资源需求是 100m CPU 和 200Mi 内存的 Pod。
 
 ```shell
-./kluster-capacity cc --kubeconfig <path to kubeconfig> --schedulerconfig= <path to schedulerconfig> --verbose
+./kluster-capacity cc --verbose
 2 node(s) in the cluster can be scaled down.
 
 Termination reason: FailedSelectNode: could not find a node that satisfies the condition, 1 master node(s); 2 node(s) can't be scale down because of insufficient resource in other nodes;
