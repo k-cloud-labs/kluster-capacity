@@ -109,7 +109,7 @@ type kubeschedulerFramework struct {
 	stopped bool
 
 	// final status
-	status pkg.Status
+	status *pkg.Status
 	// save status to this file if specified
 	saveTo string
 }
@@ -211,6 +211,7 @@ func NewKubeSchedulerFramework(kubeSchedulerConfig *schedconfig.CompletedConfig,
 		ignorePodsOnExcludesNode: false,
 		withNodeImages:           true,
 		withTerminatingPods:      true,
+		status:                   &pkg.Status{},
 	}
 	for _, option := range options {
 		option(s)
@@ -289,7 +290,7 @@ func (s *kubeschedulerFramework) UpdateNodesToScaleDown(nodeName string) {
 	s.status.NodesToScaleDown = append(s.status.NodesToScaleDown, nodeName)
 }
 
-func (s *kubeschedulerFramework) Status() pkg.Status {
+func (s *kubeschedulerFramework) Status() *pkg.Status {
 	return s.status
 }
 
