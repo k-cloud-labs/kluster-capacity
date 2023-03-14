@@ -400,7 +400,10 @@ func (s *kubeschedulerFramework) Run() error {
 	if s.dynInformerFactory != nil {
 		s.dynInformerFactory.WaitForCacheSync(s.informerCh)
 	}
-	go s.scheduler.Run(context.TODO())
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+	go s.scheduler.Run(ctx)
 
 	<-s.stopCh
 
