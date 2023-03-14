@@ -45,12 +45,3 @@ spec:
     - from: "*"
       to: "."
     {{addURIAndSha "https://github.com/k-cloud-labs/kluster-capacity/releases/download/{{ .TagName }}/kluster-capacity_{{ .TagName }}_linux_arm64.tar.gz" .TagName }}
-  - selector:
-      matchLabels:
-        os: windows
-        arch: amd64
-    bin: kluster-capacity.exe
-    files:
-    - from: "*"
-      to: "."
-    {{addURIAndSha "https://github.com/k-cloud-labs/kluster-capacity/releases/download/{{ .TagName }}/kluster-capacity_{{ .TagName }}_windows_x86_64.zip" .TagName }}
