@@ -4,7 +4,7 @@ builds:
     goos:
       - linux
       - darwin
-      - windows
+#      - windows
     goarch:
       - arm64
       - amd64
@@ -23,19 +23,30 @@ archives:
     replacements:
       386: i386
       amd64: x86_64
-    format_overrides:
-      - goos: windows
-        format: zip
+#    format_overrides:
+#      - goos: windows
+#        format: zip
 checksum:
   name_template: 'checksums.txt'
 snapshot:
   name_template: "{{ .Tag }}-next"
 changelog:
+  skip: false
+  use: git
   sort: asc
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: Others
+      order: 999
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
+      - "^docs:"
+      - "^test:"
 brews:
   - name: kluster-capacity
     tap:
