@@ -82,7 +82,7 @@ func getUnschedulableReason(pod *corev1.Pod) string {
 	return ""
 }
 
-func generateReport(status pkg.Status) *SchedulerSimulationReview {
+func generateReport(status *pkg.Status) *SchedulerSimulationReview {
 	details := make([]ScheduleDetail, 0)
 	unschedulablePods := make([]corev1.Pod, 0)
 	nodePodMap := make(map[string][]corev1.Pod)
