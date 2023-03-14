@@ -119,10 +119,16 @@ func (s *simulator) postBindHook(bindPod *corev1.Pod) error {
 	} else if s.bindSuccessPodCount == len(s.createdPods) {
 		klog.V(2).Infof("add node %s to simulator status", s.currentNode)
 		s.UpdateNodesToScaleDown(s.currentNode)
+
+		err := s.addLabelToNode(s.currentNode, NodeScaledDownSuccessLabel, "true")
+		if err != nil {
+			_ = s.Stop("FailedAddLabelToNode: " + err.Error())
+		}
+
 		s.simulated++
 		s.nodeFilter.Done()
 
-		err := s.selectNextNode()
+		err = s.selectNextNode()
 		if err != nil {
 			return s.Stop(fmt.Sprintf("%s, %s", FailedSelectNode, err.Error()))
 		}
@@ -167,6 +173,12 @@ func (s *simulator) selectNextNode() error {
 	} else {
 		klog.V(2).Infof("add node %s to simulator status", s.currentNode)
 		s.UpdateNodesToScaleDown(s.currentNode)
+
+		err := s.addLabelToNode(s.currentNode, NodeScaledDownSuccessLabel, "true")
+		if err != nil {
+			_ = s.Stop("FailedAddLabelToNode: " + err.Error())
+		}
+
 		s.simulated++
 		s.nodeFilter.Done()
 		return s.selectNextNode()
