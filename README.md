@@ -25,7 +25,7 @@ There are three available sub-commands: ce, cc, and ss, which represent capacity
 
 ## Capacity Estimation
 ### Intro
-As new pods get scheduled on nodes in a cluster, more resources get consumed. Monitoring available resources in the cluster is very important as operators can increase the current resources in time before all of them get exhausted. Or, carry different steps that lead to increase of available resources.
+When new pods get scheduled on nodes in a cluster, more resources get consumed. Monitoring available resources in the cluster is very important as operators can increase the current resources in time before all of them get exhausted. Or, carry different steps that lead to increase of available resources.
 
 Cluster capacity consists of capacities of individual cluster nodes. Capacity covers CPU, memory, disk space and other resources.
 
