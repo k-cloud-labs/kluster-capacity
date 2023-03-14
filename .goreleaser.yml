@@ -60,7 +60,7 @@ brews:
     goarm: 6
     homepage: https://github.com/k-cloud-labs/kluster-capacity
     license: apache-2.0
-    description: A simple CLI that support capacity estimation, cluster compression, scheduler simulation, fragmentation analysis and resource overview.
+    description: A simple CLI provide cluster capacity analysis with scheduler simulation.
     dependencies:
       - name: git
     test: |
