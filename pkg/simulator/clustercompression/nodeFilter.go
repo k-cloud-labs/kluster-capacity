@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	NodeScaledDownFailedLabel = "kc.k-cloud-labs.io/node-scale-down-failed"
-	KubernetesMasterNodeLabel = "node-role.kubernetes.io/master"
-	NodeScaleDownDisableLabel = "kc.k-cloud-labs.io/scale-down-disabled"
+	NodeScaledDownFailedLabel  = "kc.k-cloud-labs.io/node-scale-down-failed"
+	NodeScaledDownSuccessLabel = "kc.k-cloud-labs.io/node-scale-down-success"
+	KubernetesMasterNodeLabel  = "node-role.kubernetes.io/master"
+	NodeScaleDownDisableLabel  = "kc.k-cloud-labs.io/scale-down-disabled"
 )
 
 type NodeFilter interface {
@@ -39,6 +40,14 @@ func defaultFilterFunc() FilterFunc {
 				return &FilterStatus{
 					Success:   false,
 					ErrReason: ErrReasonFailedScaleDown,
+				}
+			}
+
+			_, ok = node.Labels[NodeScaledDownSuccessLabel]
+			if ok {
+				return &FilterStatus{
+					Success:   false,
+					ErrReason: ErrReasonSuccessScaleDown,
 				}
 			}
 

@@ -8,6 +8,7 @@ import (
 
 const (
 	ErrReasonFailedScaleDown   = "node(s) can't be scale down because of insufficient resource in other nodes"
+	ErrReasonSuccessScaleDown  = "node(s) has been successfully scale down"
 	ErrReasonScaleDownDisabled = "node(s) have label with scale down disabled"
 	ErrReasonMasterNode        = "master node(s)"
 	ErrReasonTaintNode         = "node(s) have taint"
