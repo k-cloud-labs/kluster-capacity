@@ -11,7 +11,23 @@
 Cluster capacity tool supports capacity estimation, scheduler simulation, and cluster compression.
 This repository was inspired by https://github.com/kubernetes-sigs/cluster-capacity.
 
-## Build
+## Install
+Go binaries are automatically built with each release by [GoReleaser](https://github.com/goreleaser/goreleaser). These can be accessed on the GitHub [releases page](https://github.com/robscott/kube-capacity/releases) for this project.
+
+### Homebrew
+This project can be installed with [Homebrew](https://brew.sh/):
+```
+brew tap k-cloud-labs/tap
+brew install k-cloud-labs/tap/kluster-capacity
+```
+
+### Krew
+This project can be installed with [Krew](https://github.com/GoogleContainerTools/krew):
+```
+kubectl krew install kluster-capacity
+```
+
+### From Source Code
 Build the framework:
 
 ```sh

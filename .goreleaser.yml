@@ -1,0 +1,54 @@
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - arm64
+      - amd64
+      - 386
+    goarm:
+      - 6
+      - 7
+archives:
+  - name_template: |-
+      kluster-capacity_{{ .Tag }}_{{ .Os }}_{{ .Arch -}}
+      {{- with .Arm -}}
+        {{- if (eq . "6") -}}hf
+        {{- else -}}v{{- . -}}
+        {{- end -}}
+      {{- end -}}
+    replacements:
+      386: i386
+      amd64: x86_64
+    format_overrides:
+      - goos: windows
+        format: zip
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+brews:
+  - name: kluster-capacity
+    tap:
+      # The token determines the release type (Github/Gitlab).
+      owner: k-cloud-labs
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    folder: Formula
+    # Brew fails from multiple 32-bit arm versions.
+    # Specify which version should be used.
+    goarm: 6
+    homepage: https://github.com/k-cloud-labs/kluster-capacity
+    license: apache-2.0
+    description: A simple CLI that support capacity estimation, cluster compression, scheduler simulation, fragmentation analysis and resource overview.
+    test: |
+      system "#{bin}/kube-capacity version"
