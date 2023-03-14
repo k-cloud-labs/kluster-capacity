@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/klog/v2"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/capacityestimation"
