@@ -5,7 +5,7 @@ metadata:
 spec:
   version: {{ .TagName }}
   homepage: https://github.com/k-cloud-labs/kluster-capacity
-  shortDescription: Cluster capacity analysis tool.
+  shortDescription: Scheduler simulation for capacity analysis.
   description: |
     A simple CLI provide cluster capacity analysis with scheduler simulation.
   platforms:
