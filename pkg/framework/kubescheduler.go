@@ -323,6 +323,8 @@ func (s *kubeschedulerFramework) InitTheWorld(objs ...runtime.Object) error {
 		}
 	}
 
+	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
+
 	return nil
 }
 
