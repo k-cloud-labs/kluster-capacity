@@ -3,7 +3,7 @@ import os
 import sys
 
 # GitHub API 认证
-g = Github(os.environ['GITHUB_TOKEN'])
+g = Github(os.environ['K_GITHUB_TOKEN'])
 repo = g.get_repo(os.environ['GITHUB_REPOSITORY'])
 
 # 获取 repository 下的所有标签
