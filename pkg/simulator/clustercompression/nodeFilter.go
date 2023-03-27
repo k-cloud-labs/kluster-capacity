@@ -129,15 +129,7 @@ func (g *singleNodeFilter) SelectNode() *Status {
 	if err != nil {
 		return nil
 	}
-	//for _, node := range nodes.Items {
-	//	n := node
-	//	status := g.nodeFilter(&n)
-	//	if status.Success {
-	//		g.candidateNode = append(g.candidateNode, &n)
-	//	} else {
-	//		statuses = append(statuses, status)
-	//	}
-	//}
+
 	go func() {
 		for status := range statusCh {
 			statuses = append(statuses, status)
