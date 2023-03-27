@@ -7,8 +7,8 @@ import (
 
 // Framework need to be implemented by all scheduler framework
 type Framework interface {
-	Run() error
-	InitTheWorld(objs ...runtime.Object) error
+	Run(init func() error) error
+	Initialize(objs ...runtime.Object) error
 	CreatePod(pod *corev1.Pod) error
 	UpdateEstimationPods(pod ...*corev1.Pod)
 	UpdateNodesToScaleDown(nodeName string)

@@ -12,7 +12,6 @@ const (
 	ErrReasonScaleDownDisabled = "node(s) have label with scale down disabled"
 	ErrReasonMasterNode        = "master node(s)"
 	ErrReasonTaintNode         = "node(s) have taint"
-	ErrReasonExcludeNode       = "exclude node(s)"
 	ErrReasonNotReadyNode      = "not ready node(s)"
 	ErrReasonStaticPod         = "node(s) have static pod"
 	ErrReasonMirrorPod         = "node(s) have mirror pod"
@@ -108,13 +107,6 @@ func (o *Options) BuildFilterFunc() FilterFunc {
 			status := o.filter(node)
 			if status != nil && !status.Success {
 				return status
-			}
-		}
-
-		if len(o.excludeNodes) > 0 && o.excludeNodes[node.Name] {
-			return &FilterStatus{
-				Success:   false,
-				ErrReason: ErrReasonExcludeNode,
 			}
 		}
 

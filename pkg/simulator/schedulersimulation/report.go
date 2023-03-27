@@ -63,7 +63,7 @@ func prettyPrint(r *SchedulerSimulationReview, verbose bool) {
 			if detail.OnlyDSPod {
 				msg = "Only DaemonSet Pod"
 			}
-			fmt.Printf("\t- %v: %v instance(s)%s\n", detail.NodeName, detail.Replicas, msg)
+			fmt.Printf("\t- %v: %v instance(s) %s\n", detail.NodeName, detail.Replicas, msg)
 		} else {
 			fmt.Printf("\t- %v\n", detail.NodeName)
 		}

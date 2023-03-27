@@ -41,7 +41,7 @@ func (s *ClusterCompressionOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&s.MaxLimit, "max-limit", 0, "Number of instances of node to be scale down after which analysis stops.. By default unlimited.")
 	fs.BoolVar(&s.FilterNodeOptions.ExcludeTaintNode, "exclude-taint-node", true, "Whether to filter nodes with taint when selecting nodes. By default true.")
 	fs.BoolVar(&s.FilterNodeOptions.ExcludeNotReadyNode, "exclude-not-ready-node", true, "Whether to filter nodes with not ready when selecting nodes. By default true.")
-	fs.BoolVar(&s.FilterNodeOptions.IgnoreStaticPod, "ignore-static-pod", true, "Whether to ignore nodes with static pods when filtering nodes. By default true.")
+	fs.BoolVar(&s.FilterNodeOptions.IgnoreStaticPod, "ignore-static-pod", false, "Whether to ignore nodes with static pods when filtering nodes. By default true.")
 	fs.BoolVar(&s.FilterNodeOptions.IgnoreMirrorPod, "ignore-mirror-pod", false, "Whether to ignore nodes with mirror pods when filtering nodes. By default false.")
 	fs.BoolVar(&s.FilterNodeOptions.IgnoreCloneSet, "ignore-cloneset", false, "Whether to ignore nodes with cloneSet pods when filtering nodes. By default false.")
 	fs.BoolVar(&s.FilterNodeOptions.IgnoreVolumePod, "ignore-volume-pod", false, "Whether to ignore nodes with volume pods when filtering nodes. By default false.")

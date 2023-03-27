@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 
@@ -55,8 +54,8 @@ func NewSSSimulatorExecutor(conf *options.SchedulerSimulationConfig) (pkg.Simula
 	return s, nil
 }
 
-func (s *simulator) Initialize(objs ...runtime.Object) error {
-	return s.InitTheWorld(objs...)
+func (s *simulator) Run() error {
+	return s.Framework.Run(nil)
 }
 
 func (s *simulator) Report() pkg.Printer {

@@ -1,24 +1,24 @@
-name: check label
-
-on:
-  issues:
-    types: [opened, edited]
-  pull_request:
-    types: [opened, edited]
-
-jobs:
-  check-label:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.x
-      - name: Install dependencies
-        run: pip install PyGithub
-      - name: Check label
-        run: python check_label.py ${{ github.event_name }} ${{ github.event.issue.number }} ${{ github.event.pull_request.number }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#name: check label
+#
+#on:
+#  issues:
+#    types: [opened, edited]
+#  pull_request:
+#    types: [opened, edited]
+#
+#jobs:
+#  check-label:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v2
+#      - name: Setup Python
+#        uses: actions/setup-python@v2
+#        with:
+#          python-version: 3.x
+#      - name: Install dependencies
+#        run: pip install PyGithub
+#      - name: Check label
+#        run: python check_label.py ${{ github.event_name }} ${{ github.event.issue.number }} ${{ github.event.pull_request.number }}
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
