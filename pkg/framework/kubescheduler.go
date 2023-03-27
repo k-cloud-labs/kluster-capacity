@@ -265,11 +265,6 @@ func NewKubeSchedulerFramework(kubeSchedulerConfig *schedconfig.CompletedConfig,
 
 	s.scheduler = scheduler
 
-	s.fakeInformerFactory.Start(s.informerCh)
-	if s.dynInformerFactory != nil {
-		s.dynInformerFactory.Start(s.informerCh)
-	}
-
 	return s, nil
 }
 
@@ -293,7 +288,7 @@ func (s *kubeschedulerFramework) GetPodsByNode(nodeName string) ([]*corev1.Pod, 
 
 // InitTheWorld use objs outside or default init resources to initialize the scheduler
 // the objs outside must be typed object.
-func (s *kubeschedulerFramework) InitTheWorld(objs ...runtime.Object) error {
+func (s *kubeschedulerFramework) Initialize(objs ...runtime.Object) error {
 	if len(objs) == 0 {
 		// black magic
 		klog.V(2).InfoS("Init the world form running cluster")
@@ -322,8 +317,6 @@ func (s *kubeschedulerFramework) InitTheWorld(objs ...runtime.Object) error {
 			}
 		}
 	}
-
-	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
 
 	return nil
 }
@@ -396,12 +389,28 @@ func (s *kubeschedulerFramework) CreatePod(pod *corev1.Pod) error {
 	return err
 }
 
-func (s *kubeschedulerFramework) Run() error {
+func (s *kubeschedulerFramework) Run(init func() error) error {
 	// wait for all informer cache synced
+	s.fakeInformerFactory.Start(s.informerCh)
+	if s.dynInformerFactory != nil {
+		s.dynInformerFactory.Start(s.informerCh)
+	}
+	start := time.Now()
+
 	s.fakeInformerFactory.WaitForCacheSync(s.informerCh)
 	if s.dynInformerFactory != nil {
 		s.dynInformerFactory.WaitForCacheSync(s.informerCh)
 	}
+
+	klog.V(4).InfoS("wait sync", "cost", time.Since(start).Milliseconds())
+
+	if init != nil {
+		err := init()
+		if err != nil {
+			return err
+		}
+	}
+
 	go s.scheduler.Run(context.TODO())
 
 	<-s.stopCh

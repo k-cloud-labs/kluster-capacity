@@ -7,7 +7,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -81,19 +80,8 @@ func NewCCSimulatorExecutor(conf *options.ClusterCompressionConfig) (pkg.Simulat
 	return s, nil
 }
 
-func (s *simulator) Initialize(objs ...runtime.Object) error {
-	err := s.InitTheWorld(objs...)
-	if err != nil {
-		return err
-	}
-
-	// select first node
-	err = s.selectNextNode()
-	if err != nil {
-		return s.Stop(fmt.Sprintf("%s, %s", FailedSelectNode, err.Error()))
-	}
-
-	return nil
+func (s *simulator) Run() error {
+	return s.Framework.Run(s.selectNextNode)
 }
 
 func (s *simulator) Report() pkg.Printer {
@@ -302,6 +290,7 @@ func (s *simulator) deletePodsByNode(node *corev1.Node) error {
 }
 
 func (s *simulator) addEventHandlers(informerFactory informers.SharedInformerFactory) (err error) {
+
 	_, _ = informerFactory.Core().V1().Pods().Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {

@@ -90,14 +90,8 @@ func NewCESimulatorExecutor(conf *options.CapacityEstimationConfig) (pkg.Simulat
 	return ms, nil
 }
 
-func (s *simulator) Initialize(objs ...runtime.Object) error {
-	err := s.InitTheWorld(objs...)
-	if err != nil {
-		return err
-	}
-
-	// create first pod
-	return s.createNextPod()
+func (s *simulator) Run(func() error) error {
+	return s.Framework.Run(s.createNextPod)
 }
 
 func (s *simulator) Report() pkg.Printer {
@@ -121,7 +115,7 @@ func (ms *multiSimulator) Run() error {
 		i := i
 		s := s
 		g.Go(func() error {
-			err := s.Run()
+			err := s.Run(nil)
 			if err != nil {
 				return err
 			}

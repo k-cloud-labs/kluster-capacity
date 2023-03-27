@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/k-cloud-labs/kluster-capacity/app/cmds/clustercompression/options"
 )
@@ -114,27 +117,44 @@ func (g *singleNodeFilter) SelectNode() *Status {
 	g.candidateNode = nil
 	g.candidateIndex = 0
 
-	var statuses []*FilterStatus
-	var nodeList []*corev1.Node
+	var (
+		statuses []*FilterStatus
+		count    int64
+		statusCh = make(chan *FilterStatus, 100000)
+	)
+
+	defer close(statusCh)
 
 	nodes, err := g.clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil
 	}
-	for i := range nodes.Items {
-		nodeList = append(nodeList, &nodes.Items[i])
-	}
-	for _, v := range nodeList {
-		status := g.nodeFilter(v)
-		if status.Success {
-			g.candidateNode = append(g.candidateNode, v)
-		} else {
+
+	go func() {
+		for status := range statusCh {
 			statuses = append(statuses, status)
 		}
-	}
+	}()
+
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes.Items), func(index int) {
+		node := &nodes.Items[index]
+		status := g.nodeFilter(node)
+		if status.Success {
+			g.candidateNode = append(g.candidateNode, node)
+		} else {
+			statusCh <- status
+			atomic.AddInt64(&count, 1)
+		}
+	})
 
 	if len(g.candidateNode) == 0 {
-		return convertFilterStatusesToStatus(statuses, g.selectedCount)
+		for {
+			if count == int64(len(statuses)) {
+				return convertFilterStatusesToStatus(statuses, g.selectedCount)
+			}
+			time.Sleep(100 * time.Millisecond)
+			fmt.Println("wait")
+		}
 	}
 
 	g.candidateIndex++
