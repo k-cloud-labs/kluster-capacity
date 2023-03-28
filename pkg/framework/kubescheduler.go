@@ -407,7 +407,7 @@ func (s *kubeschedulerFramework) Run(init func() error) error {
 	if init != nil {
 		err := init()
 		if err != nil {
-			return err
+			return s.Stop(fmt.Sprintf("%s: %s", "FailedRunInit: ", err.Error()))
 		}
 	}
 
