@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -117,44 +115,37 @@ func (g *singleNodeFilter) SelectNode() *Status {
 	g.candidateNode = nil
 	g.candidateIndex = 0
 
-	var (
-		statuses []*FilterStatus
-		count    int64
-		statusCh = make(chan *FilterStatus, 100000)
-	)
-
-	defer close(statusCh)
-
 	nodes, err := g.clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil
 	}
 
-	go func() {
-		for status := range statusCh {
-			statuses = append(statuses, status)
-		}
-	}()
+	var (
+		statuses []*FilterStatus
+		result   = make([]interface{}, len(nodes.Items))
+	)
 
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes.Items), func(index int) {
 		node := &nodes.Items[index]
 		status := g.nodeFilter(node)
 		if status.Success {
-			g.candidateNode = append(g.candidateNode, node)
+			result[index] = node
 		} else {
-			statusCh <- status
-			atomic.AddInt64(&count, 1)
+			result[index] = status
 		}
 	})
 
-	if len(g.candidateNode) == 0 {
-		for {
-			if count == int64(len(statuses)) {
-				return convertFilterStatusesToStatus(statuses, g.selectedCount)
-			}
-			time.Sleep(100 * time.Millisecond)
-			fmt.Println("wait")
+	for i := 0; i < len(nodes.Items); i++ {
+		switch result[i].(type) {
+		case *FilterStatus:
+			statuses = append(statuses, result[i].(*FilterStatus))
+		case *corev1.Node:
+			g.candidateNode = append(g.candidateNode, result[i].(*corev1.Node))
 		}
+	}
+
+	if len(g.candidateNode) == 0 {
+		return convertFilterStatusesToStatus(statuses, g.selectedCount)
 	}
 
 	g.candidateIndex++
